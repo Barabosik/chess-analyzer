@@ -143,11 +143,28 @@ function renderAssessment() {
   el.assessNote.textContent = coachNote(mv);
   if (mv.bestSan && mv.bestSan !== mv.san) {
     el.assessBest.classList.remove("hidden");
+    el.assessBest.classList.add("clickable");
     el.assessBest.innerHTML =
       '<span class="cg" style="color:var(--best)">★</span> <b>' + mv.bestSan + "</b> is best" +
+      '<span class="preview-hint">▶ see it</span>' +
       '<span class="evchip">' + fmtEval(mv.bestCpWhite, mv.bestMateWhite) + "</span>";
-  } else el.assessBest.classList.add("hidden");
+    el.assessBest.onclick = () => previewBest(mv);
+  } else { el.assessBest.classList.add("hidden"); el.assessBest.onclick = null; }
   el.assessBox.classList.remove("hidden");
+}
+
+// Play the engine's recommended move on the board (branch from the position
+// before the played move) so the user can see where it goes and continue it.
+function previewBest(mv) {
+  if (!mv || !mv.bestFrom) return;
+  const chess = new Chess(mv.fenBefore);
+  try { chess.move({ from: mv.bestFrom, to: mv.bestTo, promotion: mv.bestPromo || undefined }); }
+  catch (e) { return; }
+  state.explore = { base: mv.fenBefore, chess };
+  state.selected = null;
+  el.exploreBar.classList.remove("hidden");
+  renderExploreLine();
+  drawBoard(); renderReadout(); renderAssessment(); restartLive();
 }
 
 function cssVar(name) {
@@ -309,10 +326,14 @@ function renderSummary() {
   }
 }
 
+function fmtEvalBar(cp, mate) {
+  if (mate != null) return "M" + Math.abs(mate);
+  return (Math.abs(cp || 0) / 100).toFixed(1);
+}
 function updateEvalBar(cp, mate) {
   const wp = wpFromNode(cp, mate);
-  el.evalFill.style.height = wp + "%";
-  el.evalNum.textContent = fmtEval(cp, mate);
+  el.evalFill.style.transform = "scaleY(" + wp / 100 + ")";
+  el.evalNum.textContent = fmtEvalBar(cp, mate);
   el.evalNum.className = "evalnum " + (wp >= 50 ? "bot" : "top");
 }
 
@@ -339,8 +360,10 @@ function renderReadout() {
     el.readMove.textContent = mv.moveNo + (mv.color === "w" ? ". " : "... ") + mv.san + "  —  " + cl.label;
     let sub = "Eval " + fmtEval(mv.cpWhite, mv.mateWhite);
     if (mv.loss >= 5) sub += " · lost " + mv.loss + "% win chance";
-    if (mv.showBetter && mv.bestSan) sub += " · better was <b>" + mv.bestSan + "</b>";
+    if (mv.showBetter && mv.bestSan) sub += ' · better was <b class="bestlink">' + mv.bestSan + "</b>";
     el.readSub.innerHTML = sub;
+    const bl = el.readSub.querySelector(".bestlink");
+    if (bl) bl.onclick = () => previewBest(mv);
   } else {
     el.readGlyph.style.background = "var(--muted)";
     el.readGlyph.textContent = "•";
@@ -484,7 +507,7 @@ async function runReview() {
     depth: state.reviewDepth,
     onProgress: (d) => {
       const pct = Math.round((d / total) * 100);
-      el.progressBar.style.width = pct + "%";
+      el.progressBar.style.transform = "scaleX(" + pct / 100 + ")";
       el.progressTxt.textContent = "Analyzing " + d + " / " + total + " positions (depth " + state.reviewDepth + ")";
     },
     signal: state.cancel,
@@ -493,7 +516,7 @@ async function runReview() {
   el.reviewBtn.textContent = "Analyze game";
   el.reviewBtn.classList.remove("cancel");
   el.progress.classList.add("hidden");
-  el.progressBar.style.width = "0%";
+  el.progressBar.style.transform = "scaleX(0)";
   if (!res) { restartLive(); return; }
   state.review = res;
   state.moves = res.moves;

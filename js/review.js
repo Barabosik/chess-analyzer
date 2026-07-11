@@ -132,6 +132,9 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
       loss: Math.round(loss * 10) / 10,
       cls,
       bestSan,                                   // engine's top choice at this position
+      bestFrom: bestUci ? bestUci.slice(0, 2) : null,
+      bestTo: bestUci ? bestUci.slice(2, 4) : null,
+      bestPromo: bestUci ? bestUci.slice(4, 5) || null : null,
       bestCpWhite: evalWhite(before.best),       // eval if the best move had been played
       bestMateWhite: before.best ? before.best.mate : null,
       showBetter: cls === "inaccuracy" || cls === "mistake" || cls === "blunder",
