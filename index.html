@@ -43,11 +43,13 @@
           <button id="loadFen">Load FEN</button>
           <label class="lab" style="margin-top:14px">Review depth</label>
           <select id="depthSel">
-            <option value="10">10 — fastest</option>
-            <option value="12">12 — fast</option>
-            <option value="14">14 — balanced</option>
-            <option value="16">16 — deeper</option>
-            <option value="18">18 — deepest</option>
+            <option value="12">Depth 12 · fastest</option>
+            <option value="14">Depth 14 · fast</option>
+            <option value="16">Depth 16 · balanced</option>
+            <option value="18">Depth 18 · deep</option>
+            <option value="20">Depth 20 · deeper</option>
+            <option value="22">Depth 22 · deepest</option>
+            <option value="26">Depth 26 · maximum (slow)</option>
           </select>
         </div>
       </div>
@@ -57,7 +59,7 @@
       <!-- LEFT: board -->
       <section class="card boardcard">
         <div class="ghead">
-          <h2 class="serif" id="hdrTitle">—</h2>
+          <h2 class="serif" id="hdrTitle">–</h2>
           <div class="ghmeta" id="hdrMeta"></div>
         </div>
 
@@ -113,8 +115,8 @@
           </div>
           <div class="summary hidden" id="summary">
             <div class="acc">
-              <div class="accbox"><div class="who" id="accWName">White</div><div class="n" id="accWhite">—</div><div class="l">Accuracy</div></div>
-              <div class="accbox"><div class="who" id="accBName">Black</div><div class="n" id="accBlack">—</div><div class="l">Accuracy</div></div>
+              <div class="accbox"><div class="who" id="accWName">White</div><div class="n" id="accWhite">–</div><div class="l">Accuracy</div></div>
+              <div class="accbox"><div class="who" id="accBName">Black</div><div class="n" id="accBlack">–</div><div class="l">Accuracy</div></div>
             </div>
             <div class="chead"><span>W</span><span>B</span></div>
             <div class="counts" id="counts"></div>
@@ -124,7 +126,7 @@
         <section class="card live" id="live">
           <div class="live-head">
             <button class="toggle on" id="liveToggle">Engine: on</button>
-            <div class="live-meta"><span class="mono" id="liveEval">—</span><span class="dim mono" id="liveDepth"></span></div>
+            <div class="live-meta"><span class="mono" id="liveEval">–</span><span class="dim mono" id="liveDepth"></span></div>
           </div>
           <div class="assess hidden" id="assessBox">
             <div class="assess-head">
