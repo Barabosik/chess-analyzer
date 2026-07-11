@@ -171,7 +171,9 @@ function loadGame(parsed) {
 // ---------- rendering ----------
 function renderHeader() {
   const h = state.headers;
-  el.hdrTitle.textContent = (h.White || "White") + "  vs  " + (h.Black || "Black");
+  const hasGame = !!(h.White || h.Black || state.moves.length);
+  el.hdrTitle.textContent = hasGame ? (h.White || "White") + "  vs  " + (h.Black || "Black")
+                                    : "Load a game to analyze";
   el.pWName.textContent = h.White || "White";
   el.pBName.textContent = h.Black || "Black";
   el.pWElo.textContent = h.WhiteElo ? "(" + h.WhiteElo + ")" : "";
@@ -181,7 +183,8 @@ function renderHeader() {
   if (h.ECO) bits.push("ECO " + h.ECO);
   if (h.Result) bits.push(h.Result);
   if (h.Termination) bits.push(h.Termination);
-  el.hdrMeta.textContent = bits.join("  ·  ");
+  el.hdrMeta.textContent = hasGame && bits.length ? bits.join("  ·  ")
+    : "Paste a PGN or FEN above, upload a .pgn file, or click Load sample.";
 }
 
 function renderMoveList() {
@@ -522,6 +525,5 @@ bind();
 buildLegend();
 el.depthSel.value = String(state.reviewDepth);
 el.linesSel.value = String(state.liveLines);
-loadGame(parseGame(SAMPLE_PGN));
-el.pgnInput.value = SAMPLE_PGN;
+loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN }); // start empty — no game preloaded
 boot();

@@ -2,7 +2,8 @@
 // highlight, a classification badge, coordinates, and optional click-to-move.
 import { CLASSES } from "./review.js";
 
-const GLYPH = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" };
+// cburnett SVG piece set (GPL). Path is relative to the HTML document base.
+const PIECES = "vendor/pieces/cburnett/";
 
 export function renderBoard(el, fen, opts = {}) {
   const { flip = false, lastMove = null, badge = null, selected = null, targets = [], onSquareClick = null } = opts;
@@ -34,9 +35,10 @@ export function renderBoard(el, fen, opts = {}) {
       if (selected === name) sq.classList.add("sel");
 
       if (piece) {
+        const isWhite = piece === piece.toUpperCase();
         const pc = document.createElement("div");
-        pc.className = "pc " + (piece === piece.toUpperCase() ? "w" : "b");
-        pc.textContent = GLYPH[piece.toLowerCase()];
+        pc.className = "pc";
+        pc.style.backgroundImage = "url('" + PIECES + (isWhite ? "w" : "b") + piece.toUpperCase() + ".svg')";
         sq.appendChild(pc);
       }
       if (targets.includes(name)) {

@@ -73,6 +73,7 @@ any human and more than enough for accurate game review.
 - Analysis engine: [Stockfish](https://github.com/official-stockfish/Stockfish),
   compiled to WebAssembly via [nmrugg/stockfish.js](https://github.com/nmrugg/stockfish.js).
 - Move generation / PGN: [chess.js](https://github.com/jhlywa/chess.js).
+- Board pieces: the **cburnett** SVG set by Colin M. L. Burnett (GPL), via [lichess-org/lila](https://github.com/lichess-org/lila).
 
 Stockfish is licensed under the **GNU General Public License v3**. Because this project
 bundles it, the project is distributed under the **GPLv3** as well — see [LICENSE](LICENSE).
