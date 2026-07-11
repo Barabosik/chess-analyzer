@@ -9,13 +9,14 @@ export const CLASSES = {
   brilliant:  { g: "!!", label: "Brilliant",  v: "--brilliant" },
   great:      { g: "!",  label: "Great move",  v: "--great" },
   best:       { g: "★", label: "Best move", v: "--best" },
-  good:       { g: "✓", label: "Good",     v: "--good" },
+  excellent:  { g: "✓", label: "Excellent",   v: "--excellent" },
+  good:       { g: "•", label: "Good",     v: "--good" },
   book:       { g: "◇", label: "Book",     v: "--book" },
   inaccuracy: { g: "?!", label: "Inaccuracy",  v: "--inacc" },
   mistake:    { g: "?",  label: "Mistake",     v: "--mistake" },
   blunder:    { g: "??", label: "Blunder",     v: "--blunder" },
 };
-export const CLASS_ORDER = ["brilliant", "great", "best", "good", "book", "inaccuracy", "mistake", "blunder"];
+export const CLASS_ORDER = ["brilliant", "great", "best", "excellent", "good", "book", "inaccuracy", "mistake", "blunder"];
 
 export function winPct(cp) {
   return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
@@ -118,7 +119,8 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     if (i < bookPlies && loss < 8) cls = "book";
     else if (sac && loss < 3 && evalAfterMover >= 80 && evalAfterMover < 9000 && matBefore > 3) cls = "brilliant";
     else if (isBest && gap != null && gap >= 12 && loss < 2) cls = "great";
-    else if (isBest || loss < 1.5) cls = "best";
+    else if (isBest) cls = "best";
+    else if (loss < 2) cls = "excellent";
     else if (loss < 5) cls = "good";
     else if (loss < 10) cls = "inaccuracy";
     else if (loss < 20) cls = "mistake";

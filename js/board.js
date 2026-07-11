@@ -6,7 +6,7 @@ import { CLASSES } from "./review.js";
 const PIECES = "vendor/pieces/cburnett/";
 
 export function renderBoard(el, fen, opts = {}) {
-  const { flip = false, lastMove = null, badge = null, selected = null, targets = [], onSquareClick = null } = opts;
+  const { flip = false, lastMove = null, badge = null, selected = null, targets = [], arrows = [], onSquareClick = null } = opts;
   const rowsFen = fen.split(" ")[0].split("/");
   const grid = rowsFen.map((fr) => {
     const arr = [];
@@ -65,4 +65,40 @@ export function renderBoard(el, fen, opts = {}) {
       el.appendChild(sq);
     }
   }
+
+  // Move arrows (drawn in board grid units; board is square so no distortion).
+  if (arrows.length) {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "arrows");
+    svg.setAttribute("viewBox", "0 0 8 8");
+    for (const a of arrows) {
+      const f = sqCR(a.from, flip), t = sqCR(a.to, flip);
+      const x1 = f.c + 0.5, y1 = f.r + 0.5, x2 = t.c + 0.5, y2 = t.r + 0.5;
+      const col = a.color || "#f7b34c";
+      const ang = Math.atan2(y2 - y1, x2 - x1);
+      const head = 0.4, halfW = 0.18, shaft = 0.15;
+      const sx = x1 + Math.cos(ang) * 0.34, sy = y1 + Math.sin(ang) * 0.34;
+      const tipx = x2 - Math.cos(ang) * 0.08, tipy = y2 - Math.sin(ang) * 0.08;
+      const bx = tipx - Math.cos(ang) * head, by = tipy - Math.sin(ang) * head;
+      const line = document.createElementNS(NS, "line");
+      line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+      line.setAttribute("x2", bx); line.setAttribute("y2", by);
+      line.setAttribute("stroke", col); line.setAttribute("stroke-width", shaft);
+      line.setAttribute("stroke-linecap", "round"); line.setAttribute("opacity", "0.9");
+      svg.appendChild(line);
+      const poly = document.createElementNS(NS, "polygon");
+      const lx = bx + Math.cos(ang + Math.PI / 2) * halfW, ly = by + Math.sin(ang + Math.PI / 2) * halfW;
+      const rx = bx - Math.cos(ang + Math.PI / 2) * halfW, ry = by - Math.sin(ang + Math.PI / 2) * halfW;
+      poly.setAttribute("points", tipx + "," + tipy + " " + lx + "," + ly + " " + rx + "," + ry);
+      poly.setAttribute("fill", col); poly.setAttribute("opacity", "0.9");
+      svg.appendChild(poly);
+    }
+    el.appendChild(svg);
+  }
+}
+
+function sqCR(square, flip) {
+  const file = square.charCodeAt(0) - 97, rank = +square[1];
+  return { c: flip ? 7 - file : file, r: flip ? rank - 1 : 8 - rank };
 }

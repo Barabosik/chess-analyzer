@@ -68,6 +68,13 @@ Review depth is selectable in the UI (10–18). Higher depth = more accurate lab
 The bundled build is the *lite* net (~7 MB) for fast loading; it is already far stronger than
 any human and more than enough for accurate game review.
 
+## Contributing
+
+Pull requests are welcome — bug fixes, new features, or polish. There's no build step,
+just serve the folder and edit. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, a
+manual test checklist, and the PR process. Please keep it framework-free and use only
+freely licensed assets.
+
 ## Credits & license
 
 - Analysis engine: [Stockfish](https://github.com/official-stockfish/Stockfish),

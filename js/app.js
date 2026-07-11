@@ -157,14 +157,47 @@ function renderAssessment() {
 // before the played move) so the user can see where it goes and continue it.
 function previewBest(mv) {
   if (!mv || !mv.bestFrom) return;
+  playToken++;
   const chess = new Chess(mv.fenBefore);
   try { chess.move({ from: mv.bestFrom, to: mv.bestTo, promotion: mv.bestPromo || undefined }); }
   catch (e) { return; }
-  state.explore = { base: mv.fenBefore, chess };
+  state.explore = { base: mv.fenBefore, chess, arrow: { from: mv.bestFrom, to: mv.bestTo } };
   state.selected = null;
   el.exploreBar.classList.remove("hidden");
   renderExploreLine();
-  drawBoard(); renderReadout(); renderAssessment(); restartLive();
+  drawBoard();
+  animateMove(mv.bestFrom, mv.bestTo);
+  renderReadout(); renderAssessment(); restartLive();
+}
+
+// Play an engine line out on the board, one animated move at a time.
+function playLine(fen, pv) {
+  if (!pv || !pv.length) return;
+  const token = ++playToken;
+  const chess = new Chess(fen);
+  state.explore = { base: fen, chess, arrow: null };
+  state.selected = null;
+  el.exploreBar.classList.remove("hidden");
+  if (state.engine) state.engine.stopLive();
+  let i = 0;
+  const max = Math.min(pv.length, 10);
+  const step = () => {
+    if (token !== playToken) return;             // cancelled by another action
+    if (i >= max) { restartLive(); return; }
+    const u = pv[i];
+    let mv;
+    try { mv = chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4, 5) || undefined }); }
+    catch (e) { restartLive(); return; }
+    if (!mv) { restartLive(); return; }
+    state.explore.arrow = { from: mv.from, to: mv.to };
+    renderExploreLine();
+    drawBoard();
+    animateMove(mv.from, mv.to);
+    i++;
+    setTimeout(step, 440);
+  };
+  renderReadout(); renderAssessment();
+  step();
 }
 
 function cssVar(name) {
@@ -372,13 +405,34 @@ function renderReadout() {
   }
 }
 
+// ---------- move animation ----------
+let playToken = 0; // cancels an in-flight line playback when the user does anything else
+function dispCR(square) {
+  const file = square.charCodeAt(0) - 97, rank = +square[1];
+  return { c: state.flip ? 7 - file : file, r: state.flip ? rank - 1 : 8 - rank };
+}
+// Slide the piece now sitting on `to` from where it started (FLIP technique).
+function animateMove(from, to) {
+  const pc = el.board.querySelector('[data-sq="' + to + '"] .pc');
+  if (!pc) return;
+  const size = el.board.getBoundingClientRect().width / 8;
+  const f = dispCR(from), t = dispCR(to);
+  const dx = (f.c - t.c) * size, dy = (f.r - t.r) * size;
+  pc.style.transition = "none";
+  pc.style.transform = "translate(" + dx + "px," + dy + "px)";
+  pc.getBoundingClientRect(); // force reflow so the next frame animates
+  requestAnimationFrame(() => { pc.style.transition = "transform .2s ease"; pc.style.transform = "translate(0,0)"; });
+}
+
 function drawBoard() {
   const fen = currentFen();
   let lastMove = null, badge = null;
+  const arrows = [];
   if (state.explore) {
     const h = state.explore.chess.history({ verbose: true });
     const last = h[h.length - 1];
     if (last) lastMove = { from: last.from, to: last.to };
+    if (state.explore.arrow) arrows.push({ from: state.explore.arrow.from, to: state.explore.arrow.to, color: "#f7b34c" });
   } else if (state.ply > 0) {
     const mv = state.moves[state.ply - 1];
     lastMove = { from: mv.from, to: mv.to };
@@ -386,7 +440,7 @@ function drawBoard() {
   }
   const targets = state.selected ? legalTargets(fen, state.selected) : [];
   renderBoard(el.board, fen, {
-    flip: state.flip, lastMove, badge, selected: state.selected, targets,
+    flip: state.flip, lastMove, badge, selected: state.selected, targets, arrows,
     onSquareClick: onSquareClick,
   });
   renderMaterial(fen);
@@ -401,9 +455,13 @@ function legalTargets(fen, sq) {
 
 // ---------- navigation ----------
 function goto(ply) {
+  const prev = state.ply;
+  playToken++;
   state.ply = Math.max(0, Math.min(state.moves.length, ply));
   state.selected = null;
   drawBoard();
+  if (state.ply === prev + 1 && state.ply > 0) { const m = state.moves[state.ply - 1]; animateMove(m.from, m.to); }
+  else if (state.ply === prev - 1 && prev > 0) { const m = state.moves[prev - 1]; animateMove(m.to, m.from); }
   renderReadout();
   renderAssessment();
   // eval bar: prefer reviewed data, else let live analysis fill it in.
@@ -424,6 +482,7 @@ function goto(ply) {
 // ---------- click-to-move exploration ----------
 function onSquareClick(name) {
   if (state.reviewing) return;
+  playToken++;
   const fen = currentFen();
   const c = new Chess(fen);
   const piece = c.get(name);
@@ -465,13 +524,24 @@ function returnToGame() {
 }
 
 // ---------- live engine ----------
-async function restartLive() {
+// Debounced + generation-guarded so rapid navigation never overlaps engine
+// searches (overlapping stop/position/go corrupts the WASM engine).
+let liveGen = 0;
+let liveTimer = null;
+function restartLive() {
+  clearTimeout(liveTimer);
   if (!state.booted || !state.live || state.reviewing) return;
-  const fen = currentFen();
-  await state.engine.live(fen, {
-    multipv: state.liveLines,
-    onUpdate: (lines) => renderLive(fen, lines),
-  });
+  const gen = ++liveGen;
+  liveTimer = setTimeout(async () => {
+    if (gen !== liveGen || state.reviewing || !state.live) return;
+    const fen = currentFen();
+    await state.engine.stopLive();          // fully settle the previous search
+    if (gen !== liveGen || state.reviewing) return; // superseded / review started while stopping
+    await state.engine.live(fen, {
+      multipv: state.liveLines,
+      onUpdate: (lines) => { if (gen === liveGen) renderLive(fen, lines); },
+    });
+  }, 90);
 }
 function renderLive(fen, lines) {
   if (!lines.length) return;
@@ -486,9 +556,12 @@ function renderLive(fen, lines) {
     const sans = pvToSan(fen, ln.pv);
     const div = document.createElement("div");
     div.className = "liveline";
+    div.title = "Play this line out on the board";
     div.innerHTML =
       '<span class="lev">' + fmtEval(ln.cp, ln.mate) + "</span>" +
       '<span class="lpv">' + formatPvSan(fen, sans) + "</span>";
+    const pv = ln.pv.slice();
+    div.addEventListener("click", () => playLine(fen, pv));
     el.liveLinesBox.appendChild(div);
   }
 }
@@ -497,6 +570,7 @@ function renderLive(fen, lines) {
 async function runReview() {
   if (!state.moves.length || !state.booted || state.reviewing) return;
   state.reviewing = true;
+  clearTimeout(liveTimer); liveGen++;   // cancel any pending live search
   state.cancel = { cancelled: false };
   el.reviewBtn.textContent = "Cancel";
   el.reviewBtn.classList.add("cancel");
