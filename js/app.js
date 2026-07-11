@@ -1,7 +1,7 @@
-import { Chess } from "../vendor/chess.js";
-import { Engine } from "./engine.js";
-import { renderBoard } from "./board.js";
-import { reviewGame, CLASSES, CLASS_ORDER, winPct } from "./review.js";
+import { Chess } from "../vendor/chess.js?v=4";
+import { Engine } from "./engine.js?v=4";
+import { renderBoard } from "./board.js?v=4";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=4";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -34,7 +34,9 @@ const state = {
   reviewed: false, reviewing: false, cancel: { cancelled: false },
   live: true, reviewDepth: 14, liveLines: 3,
   explore: null, selected: null,
+  sound: true, opening: null,
 };
+try { state.sound = localStorage.getItem("ca_sound") !== "0"; } catch (e) { /* private mode */ }
 
 const $ = (id) => document.getElementById(id);
 const el = {};
@@ -43,7 +45,8 @@ const el = {};
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
- "assessNote","assessBest","graphCard","evalGraph"].forEach((k) => (el[k] = $(k)));
+ "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn"]
+  .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
 function fmtEval(cp, mate) {
@@ -81,6 +84,103 @@ function formatPvSan(fen, sans) {
     white = !white;
   });
   return s;
+}
+
+// ---------- sounds (synthesized with WebAudio, no audio files) ----------
+let audioCtx = null;
+function audio() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+function blip({ freq = 240, dur = 0.08, gain = 0.13, noisy = false }) {
+  if (!state.sound) return;
+  const ctx = audio();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  g.connect(ctx.destination);
+  if (noisy) { // capture: short filtered noise burst
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const f = ctx.createBiquadFilter();
+    f.type = "bandpass"; f.frequency.value = freq * 3;
+    src.connect(f); f.connect(g); src.start(t); src.stop(t + dur);
+  } else {     // move: soft pitch-dropping thock
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(freq * 0.6, t + dur);
+    o.connect(g); o.start(t); o.stop(t + dur);
+  }
+}
+function playMoveSound(mv) {
+  if (!mv) return;
+  const san = mv.san || "";
+  if (san.includes("#")) return blip({ freq: 500, dur: 0.18, gain: 0.16 });
+  if (san.includes("+")) return blip({ freq: 420, dur: 0.10, gain: 0.14 });
+  if (san.includes("x") || mv.captured) return blip({ freq: 200, dur: 0.10, gain: 0.18, noisy: true });
+  if (san.startsWith("O-O")) return blip({ freq: 175, dur: 0.12, gain: 0.15 });
+  blip({ freq: 240, dur: 0.075, gain: 0.12 });
+}
+
+// ---------- share link ----------
+let chipTimer = null;
+function flashChip(msg) {
+  el.engineStatus.textContent = msg;
+  clearTimeout(chipTimer);
+  chipTimer = setTimeout(() => {
+    el.engineStatus.textContent = state.booted ? "ready" : "starting…";
+  }, 1800);
+}
+function buildShareLink() {
+  const base = location.origin + location.pathname;
+  const pgn = el.pgnInput.value.trim();
+  if (state.moves.length && pgn) {
+    return base + "#pgn=" + btoa(unescape(encodeURIComponent(pgn)));
+  }
+  if (state.startFen && state.startFen !== DEFAULT_FEN) {
+    return base + "#fen=" + encodeURIComponent(state.startFen);
+  }
+  return base;
+}
+async function copyShareLink() {
+  const url = buildShareLink();
+  try {
+    await navigator.clipboard.writeText(url);
+    flashChip("link copied");
+  } catch (e) {
+    window.prompt("Copy this link:", url);
+  }
+}
+// Load a game/position that was shared via the URL hash.
+function loadFromHash() {
+  const h = location.hash || "";
+  try {
+    if (h.startsWith("#pgn=")) {
+      const pgn = decodeURIComponent(escape(atob(h.slice(5))));
+      el.pgnInput.value = pgn;
+      loadGame(parseGame(pgn));
+      return true;
+    }
+    if (h.startsWith("#fen=")) {
+      const fen = decodeURIComponent(h.slice(5));
+      new Chess(fen); // validates
+      loadGame({ headers: { White: "Position", Black: "analysis" }, moves: [], startFen: fen });
+      return true;
+    }
+  } catch (e) { /* fall through to empty board */ }
+  return false;
 }
 
 // ---------- captured material ----------
@@ -167,6 +267,7 @@ function previewBest(mv) {
   renderExploreLine();
   drawBoard();
   animateMove(mv.bestFrom, mv.bestTo);
+  playMoveSound({ san: mv.bestSan || "" });
   renderReadout(); renderAssessment(); restartLive();
 }
 
@@ -196,6 +297,7 @@ function playLine(fen, pv) {
   renderExploreLine();
   drawBoard();
   animateMove(mv.from, mv.to);
+  playMoveSound(mv);
   renderReadout(); renderAssessment(); restartLive();
 }
 
@@ -278,7 +380,9 @@ function loadGame(parsed) {
   state.review = null;
   state.explore = null;
   state.selected = null;
+  state.opening = detectOpening(parsed.moves);
   renderHeader();
+  renderOpening();
   renderMoveList();
   el.summary.classList.add("hidden");
   el.reviewBtn.disabled = !state.moves.length || !state.booted;
@@ -302,6 +406,13 @@ function renderHeader() {
   if (h.Termination) bits.push(h.Termination);
   el.hdrMeta.textContent = hasGame && bits.length ? bits.join("  ·  ")
     : "Paste a PGN or FEN above, upload a .pgn file, or click Load sample.";
+}
+
+function renderOpening() {
+  const op = state.opening; // [eco, name]
+  if (!op) { el.openingName.classList.add("hidden"); return; }
+  el.openingName.textContent = op[1] + "  ·  " + op[0];
+  el.openingName.classList.remove("hidden");
 }
 
 function renderMoveList() {
@@ -469,8 +580,11 @@ function goto(ply) {
   state.ply = Math.max(0, Math.min(state.moves.length, ply));
   state.selected = null;
   drawBoard();
-  if (state.ply === prev + 1 && state.ply > 0) { const m = state.moves[state.ply - 1]; animateMove(m.from, m.to); }
-  else if (state.ply === prev - 1 && prev > 0) { const m = state.moves[prev - 1]; animateMove(m.to, m.from); }
+  if (state.ply === prev + 1 && state.ply > 0) {
+    const m = state.moves[state.ply - 1]; animateMove(m.from, m.to); playMoveSound(m);
+  } else if (state.ply === prev - 1 && prev > 0) {
+    const m = state.moves[prev - 1]; animateMove(m.to, m.from); playMoveSound(m);
+  }
   renderReadout();
   renderAssessment();
   // eval bar: prefer reviewed data, else let live analysis fill it in.
@@ -500,12 +614,17 @@ function onSquareClick(name) {
     try {
       const mv = c.move({ from: state.selected, to: name, promotion: "q" });
       if (mv) {
+        const from = state.selected;
         if (!state.explore) state.explore = { base: fen, chess: new Chess(fen) };
-        state.explore.chess.move({ from: state.selected, to: name, promotion: "q" });
+        state.explore.chess.move({ from, to: name, promotion: "q" });
+        state.explore.arrow = null;
         state.selected = null;
         el.exploreBar.classList.remove("hidden");
         renderExploreLine();
-        drawBoard(); renderReadout(); renderAssessment(); restartLive();
+        drawBoard();
+        animateMove(from, name);
+        playMoveSound(mv);
+        renderReadout(); renderAssessment(); restartLive();
         return;
       }
     } catch (e) { /* not a legal move; fall through to reselect */ }
@@ -673,6 +792,17 @@ function bind() {
   });
   window.addEventListener("resize", () => { if (state.reviewed) drawEvalGraph(); });
 
+  el.soundToggle.classList.toggle("on", state.sound);
+  el.soundToggle.onclick = () => {
+    state.sound = !state.sound;
+    el.soundToggle.classList.toggle("on", state.sound);
+    try { localStorage.setItem("ca_sound", state.sound ? "1" : "0"); } catch (e) { /* ignore */ }
+    if (state.sound) playMoveSound({ san: "e4" }); // preview the sound when enabling
+  };
+  el.shareBtn.onclick = copyShareLink;
+  // Pasting a share link into an already-open tab should load that game.
+  window.addEventListener("hashchange", () => { loadFromHash(); });
+
   $("themeToggle").onclick = () => {
     const cur = document.documentElement.getAttribute("data-theme");
     const next = cur === "dark" ? "light" : cur === "light" ? "dark"
@@ -707,5 +837,6 @@ bind();
 buildLegend();
 el.depthSel.value = String(state.reviewDepth);
 el.linesSel.value = String(state.liveLines);
-loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN }); // start empty — no game preloaded
+// A shared #pgn= / #fen= link loads that game; otherwise start empty.
+if (!loadFromHash()) loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN });
 boot();

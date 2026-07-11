@@ -1,8 +1,25 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js";
+import { Chess } from "../vendor/chess.js?v=4";
+import { OPENINGS } from "../vendor/openings.js?v=4";
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+// A position is "book" when it appears in the opening database (real theory),
+// rather than guessing by move number.
+export function bookLookup(fen) {
+  const p = fen.split(" ");
+  return OPENINGS[p[0] + " " + p[1]] || null;
+}
+// The deepest named opening the game reached.
+export function detectOpening(moves) {
+  let last = null;
+  for (let i = 0; i < moves.length && i < 30; i++) {
+    const e = bookLookup(moves[i].fenAfter);
+    if (e) last = e;
+  }
+  return last;
+}
 
 // Classification metadata (id -> glyph/label/colour var). Order = display order.
 export const CLASSES = {
@@ -71,6 +88,7 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
   const counts = { w: {}, b: {} };
   for (const k of CLASS_ORDER) { counts.w[k] = 0; counts.b[k] = 0; }
   const losses = { w: [], b: [] };
+  let opening = null;
 
   for (let i = 0; i < moves.length; i++) {
     const mv = moves[i];
@@ -115,8 +133,11 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     }
     const evalAfterMover = whiteMove ? evalWhite(after.best) : -evalWhite(after.best);
 
+    const bookEntry = i < 30 ? bookLookup(mv.fenAfter) : null;
+    if (bookEntry) opening = bookEntry;
+
     let cls;
-    if (i < bookPlies && loss < 8) cls = "book";
+    if (bookEntry) cls = "book";
     else if (sac && loss < 3 && evalAfterMover >= 80 && evalAfterMover < 9000 && matBefore > 3) cls = "brilliant";
     else if (isBest && gap != null && gap >= 12 && loss < 2) cls = "great";
     else if (isBest) cls = "best";
@@ -133,13 +154,15 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
       mateWhite: after.best ? after.best.mate : null,
       loss: Math.round(loss * 10) / 10,
       cls,
-      bestSan,                                   // engine's top choice at this position
-      bestFrom: bestUci ? bestUci.slice(0, 2) : null,
-      bestTo: bestUci ? bestUci.slice(2, 4) : null,
-      bestPromo: bestUci ? bestUci.slice(4, 5) || null : null,
+      // Book moves are theory — there is no "better" move to suggest.
+      bestSan: bookEntry ? null : bestSan,
+      bestFrom: bookEntry || !bestUci ? null : bestUci.slice(0, 2),
+      bestTo: bookEntry || !bestUci ? null : bestUci.slice(2, 4),
+      bestPromo: bookEntry || !bestUci ? null : bestUci.slice(4, 5) || null,
       bestCpWhite: evalWhite(before.best),       // eval if the best move had been played
       bestMateWhite: before.best ? before.best.mate : null,
-      showBetter: cls === "inaccuracy" || cls === "mistake" || cls === "blunder",
+      showBetter: !bookEntry && (cls === "inaccuracy" || cls === "mistake" || cls === "blunder"),
+      opening: bookEntry ? bookEntry[1] : null,
     });
   }
 
@@ -148,5 +171,6 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     accWhite: Math.round(accuracy(losses.w) * 10) / 10,
     accBlack: Math.round(accuracy(losses.b) * 10) / 10,
     counts,
+    opening,
   };
 }

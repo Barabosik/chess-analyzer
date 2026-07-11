@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=4" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -21,6 +21,8 @@
       </div>
       <div class="topright">
         <span class="statuschip" id="engineStatus">starting…</span>
+        <button class="ghost" id="shareBtn" title="Copy a shareable link to this game">⇗</button>
+        <button class="ghost on" id="soundToggle" title="Toggle move sounds">♪</button>
         <button class="ghost" id="themeToggle" title="Toggle light / dark">◐</button>
       </div>
     </header>
@@ -61,6 +63,7 @@
         <div class="ghead">
           <h2 class="serif" id="hdrTitle">–</h2>
           <div class="ghmeta" id="hdrMeta"></div>
+          <div class="opening hidden" id="openingName"></div>
         </div>
 
         <div class="playerline top">
@@ -114,13 +117,12 @@
             <div class="ptxt" id="progressTxt"></div>
           </div>
           <div class="summary hidden" id="summary">
-            <div class="ratinghdr">Estimated rating
-              <span class="infodot" title="A rough estimate of each player's strength based on this single game. It is not an official rating.">i</span>
-            </div>
+            <div class="ratinghdr">Estimated rating</div>
             <div class="acc rating">
               <div class="accbox"><div class="who" id="rateWName">White</div><div class="n" id="rateWhite">–</div><div class="l">Game rating</div></div>
               <div class="accbox"><div class="who" id="rateBName">Black</div><div class="n" id="rateBlack">–</div><div class="l">Game rating</div></div>
             </div>
+            <div class="ratingnote">A rough estimate from this one game. Not an official rating.</div>
             <div class="acc">
               <div class="accbox"><div class="who" id="accWName">White</div><div class="n" id="accWhite">–</div><div class="l">Accuracy</div></div>
               <div class="accbox"><div class="who" id="accBName">Black</div><div class="n" id="accBlack">–</div><div class="l">Accuracy</div></div>
@@ -177,6 +179,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=4"></script>
 </body>
 </html>

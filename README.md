@@ -19,8 +19,13 @@ an eval bar, captured-material tracking, and live engine lines — with **nothin
 - **Eval bar + captured material** — see who's winning and the exact material difference at a glance.
 - **Import anything** — paste a PGN (Chess.com / Lichess exports work as-is), upload a `.pgn`
   file, or load a single position from a FEN.
+- **Opening names** — the game's opening is identified from a real openings book
+  ("Four Knights Game: Scotch Variation, Main Line · C47"). Book moves are labelled
+  from actual theory, and never get a "better move" suggestion — they're theory, there is no better.
 - **Explore lines** — click pieces to play out your own variations from any position;
   the engine follows along. Hit *Return to game* to jump back.
+- **Move sounds** — synthesized in the browser (distinct move / capture / check / castle), with a mute toggle.
+- **Shareable links** — copy a link that reopens the exact game or position for anyone you send it to.
 - **Runs offline & private** — the engine is bundled and executes locally via WebAssembly.
   Keyboard navigation (`←` `→` `Home` `End`, `f` to flip), light/dark theme.
 
@@ -81,6 +86,7 @@ freely licensed assets.
   compiled to WebAssembly via [nmrugg/stockfish.js](https://github.com/nmrugg/stockfish.js).
 - Move generation / PGN: [chess.js](https://github.com/jhlywa/chess.js).
 - Board pieces: the **cburnett** SVG set by Colin M. L. Burnett (GPL), via [lichess-org/lila](https://github.com/lichess-org/lila).
+- Opening book: [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings) (CC0 / public domain).
 
 Stockfish is licensed under the **GNU General Public License v3**. Because this project
 bundles it, the project is distributed under the **GPLv3** as well — see [LICENSE](LICENSE).
