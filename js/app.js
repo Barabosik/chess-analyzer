@@ -170,34 +170,33 @@ function previewBest(mv) {
   renderReadout(); renderAssessment(); restartLive();
 }
 
-// Play an engine line out on the board, one animated move at a time.
+// Play the NEXT single move of an engine line (one click = one move). The engine
+// then re-analyzes the new position, so clicking a line again continues it.
 function playLine(fen, pv) {
   if (!pv || !pv.length) return;
-  const token = ++playToken;
-  const chess = new Chess(fen);
-  state.explore = { base: fen, chess, arrow: null };
+  playToken++;
+  // Continue the current line if this click starts from the current explore
+  // position; otherwise begin a fresh line from `fen`.
+  let base, chess;
+  if (state.explore && state.explore.chess.fen() === fen) {
+    base = state.explore.base;
+    chess = state.explore.chess;
+  } else {
+    base = fen;
+    chess = new Chess(fen);
+  }
+  const u = pv[0];
+  let mv;
+  try { mv = chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4, 5) || undefined }); }
+  catch (e) { return; }
+  if (!mv) return;
+  state.explore = { base, chess, arrow: { from: mv.from, to: mv.to } };
   state.selected = null;
   el.exploreBar.classList.remove("hidden");
-  if (state.engine) state.engine.stopLive();
-  let i = 0;
-  const max = Math.min(pv.length, 10);
-  const step = () => {
-    if (token !== playToken) return;             // cancelled by another action
-    if (i >= max) { restartLive(); return; }
-    const u = pv[i];
-    let mv;
-    try { mv = chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4, 5) || undefined }); }
-    catch (e) { restartLive(); return; }
-    if (!mv) { restartLive(); return; }
-    state.explore.arrow = { from: mv.from, to: mv.to };
-    renderExploreLine();
-    drawBoard();
-    animateMove(mv.from, mv.to);
-    i++;
-    setTimeout(step, 440);
-  };
-  renderReadout(); renderAssessment();
-  step();
+  renderExploreLine();
+  drawBoard();
+  animateMove(mv.from, mv.to);
+  renderReadout(); renderAssessment(); restartLive();
 }
 
 function cssVar(name) {
@@ -556,7 +555,7 @@ function renderLive(fen, lines) {
     const sans = pvToSan(fen, ln.pv);
     const div = document.createElement("div");
     div.className = "liveline";
-    div.title = "Play this line out on the board";
+    div.title = "Play the next move of this line";
     div.innerHTML =
       '<span class="lev">' + fmtEval(ln.cp, ln.mate) + "</span>" +
       '<span class="lpv">' + formatPvSan(fen, sans) + "</span>";
