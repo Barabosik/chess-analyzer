@@ -170,7 +170,7 @@ export function parseGameUrl(input) {
 // players), so there is no way to jump to the right month — it has to be a scan.
 const MAX_ARCHIVE_SCAN = 24;
 
-export async function fetchGameByUrl(input, onProgress = () => {}) {
+export async function fetchGameByUrl(input, { onProgress = () => {}, fallbackUser = "" } = {}) {
   const ref = parseGameUrl(input);
   if (!ref) throw new LookupError("That isn't a Chess.com or Lichess game link.", "badurl");
 
@@ -192,29 +192,34 @@ export async function fetchGameByUrl(input, onProgress = () => {}) {
 
   // Chess.com publishes games per player per month and has no public
   // single-game endpoint (its internal one sends no CORS header, so a static
-  // page can't call it). The player's name is therefore required — which is
-  // exactly what the ?username= on their Share links is for.
-  if (!ref.user) {
+  // page cannot call it). A game can therefore only be found by knowing one of
+  // its players: the ?username= a Share link carries, or — for links that lack
+  // it, like /analysis/ ones — whoever the user last looked up.
+  const user = (ref.user || fallbackUser || "").trim();
+  if (!user) {
     throw new LookupError(
-      "A Chess.com link needs the ?username=… part that their Share button adds — " +
-      "without it there's no public way to look the game up. Add it, or search by username instead.",
+      "Chess.com only serves games by player, so this link alone isn't enough. " +
+      "Search your username above first, then paste the link again — or use the link from their " +
+      "Share button, which ends with ?username=…",
       "nouser");
   }
   const arch = await (await getJson(
-    "https://api.chess.com/pub/player/" + encodeURIComponent(ref.user) + "/games/archives")).json();
+    "https://api.chess.com/pub/player/" + encodeURIComponent(user) + "/games/archives")).json();
   const months = (arch.archives || []).slice().reverse().slice(0, MAX_ARCHIVE_SCAN);
   for (const month of months) {
-    onProgress("Searching " + ref.user + "’s games (" + month.slice(-7).replace("/", "-") + ")…");
+    onProgress("Looking through " + user + "’s games (" + month.slice(-7).replace("/", "-") + ")…");
     const data = await (await getJson(month)).json();
     const hit = (data.games || []).find((g) => g.url && g.url.split("/").pop() === ref.id);
     if (hit) {
       if (!hit.pgn) throw new LookupError("That game has no moves to analyze.", "empty");
-      return { id: ref.id, url: hit.url, pgn: hit.pgn, color: null, user: ref.user };
+      return { id: ref.id, url: hit.url, pgn: hit.pgn, color: null, user };
     }
   }
   throw new LookupError(
-    "Couldn’t find that game in " + ref.user + "’s last " + months.length + " months of play. " +
-    "Does the username in the link match a player in the game?", "notfound");
+    "That game isn’t among " + user + "’s last " + months.length + " months of games. " +
+    "If it’s someone else’s game, Chess.com will only hand it over by player — add " +
+    "?username=THEIR_NAME to the link, or paste the game’s PGN below instead.",
+    "notfound");
 }
 
 // Which colour the looked-up player had, and how the game went for them.

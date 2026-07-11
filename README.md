@@ -14,8 +14,10 @@ engine lines. **Your games are never uploaded** — the engine runs on your own 
 - **Import your games** — type your **Chess.com** or **Lichess** username and your last 30 games
   appear: win/loss/draw, both ratings, the opening, time control and date. Click one and it loads,
   already flipped to the side you played. No login, no API key, no copy-pasting PGNs.
-- **Or paste a game link** — drop in a `chess.com/game/live/…?username=…` or `lichess.org/…` URL
-  and that exact game opens, oriented to the player the link is about.
+- **Or paste a game link** — drop in any `lichess.org/…` URL, or a `chess.com/…` game or analysis
+  URL, and that exact game opens, oriented to the player the link is about. (Chess.com only serves
+  games *by player*, so for their links either use the `?username=…` one their Share button gives
+  you, or just search your username once first — after that any link to one of your own games works.)
 - **Full game review** — every position is analyzed and each move is labelled
   Brilliant · Great · Best · Good · Book · Inaccuracy · Mistake · Blunder,
   the way an online game review does.
@@ -53,11 +55,12 @@ engine lines. **Your games are never uploaded** — the engine runs on your own 
    and `lichess.org/api/games/user/{user}`. Both send `Access-Control-Allow-Origin: *`, so this
    needs no proxy and no server.
 5. Opening a game *by link* is easy on Lichess (`lichess.org/game/export/{id}` returns the PGN).
-   Chess.com has no public single-game endpoint, and its internal one sends no CORS header, so
-   the game has to be found by scanning that player's monthly archives — which is why a Chess.com
-   link needs the `?username=` their Share button includes. Their game ids are *not* ordered by
-   date (id ranges overlap month to month for active players), so the months can't be searched
-   by bisection; it's an honest scan back through up to 24 months.
+   Chess.com has no public single-game endpoint, and its internal one sends no CORS header, so a
+   static page cannot fetch a game from its id alone — it can only be found by scanning a *player's*
+   monthly archives. The player comes from the link's `?username=`, or failing that from the last
+   username you searched (which is what makes `/analysis/` links work for your own games). Chess.com
+   game ids are *not* ordered by date — id ranges overlap month to month for active players — so the
+   archives can't be bisected; it's an honest scan back through up to 24 months.
 
 Because it's single-threaded WASM, it needs no special server headers and works on plain
 static hosting like GitHub Pages.

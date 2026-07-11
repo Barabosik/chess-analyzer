@@ -1,8 +1,8 @@
-import { Chess } from "../vendor/chess.js?v=5";
-import { Engine } from "./engine.js?v=5";
-import { renderBoard } from "./board.js?v=5";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=5";
-import { fetchGames, fetchGameByUrl, playerSide, outcomeFor } from "./onlinegames.js?v=5";
+import { Chess } from "../vendor/chess.js?v=6";
+import { Engine } from "./engine.js?v=6";
+import { renderBoard } from "./board.js?v=6";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=6";
+import { fetchGames, fetchGameByUrl, playerSide, outcomeFor } from "./onlinegames.js?v=6";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -226,7 +226,12 @@ async function openGameFromLink(link) {
   el.loadUser.disabled = true;
   setAcctMsg("Fetching that game…", false);
   try {
-    const g = await fetchGameByUrl(link, (m) => setAcctMsg(m, false));
+    // A Chess.com link without ?username= (an /analysis/ one, say) can still be
+    // found if we know whose game to look through — use the last account searched.
+    const g = await fetchGameByUrl(link, {
+      onProgress: (m) => setAcctMsg(m, false),
+      fallbackUser: state.acct.user,
+    });
     let parsed;
     try { parsed = parseGame(g.pgn); }
     catch (e) { throw new Error("Could not read that game's PGN."); }
