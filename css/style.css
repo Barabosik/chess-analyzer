@@ -84,6 +84,38 @@ button:disabled:hover{border-color:var(--line);color:var(--ink)}
 select#depthSel{width:100%}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
+/* ---- import from a Chess.com / Lichess account ---- */
+.acctrow{display:flex;gap:8px;flex-wrap:wrap}
+#siteSel{flex:none}
+#userInput{flex:1;min-width:150px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);
+  color:var(--ink);padding:8px 12px;font-family:inherit;font-size:13px}
+#userInput:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.acctmsg{font-size:12.5px;color:var(--muted);margin-top:9px}
+.acctmsg.err{color:var(--blunder)}
+.impdiv{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--muted);
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+.impdiv::before,.impdiv::after{content:"";flex:1;height:1px;background:var(--line)}
+
+.gamelist{margin-top:10px;max-height:236px;overflow-y:auto;border:1px solid var(--line);
+  border-radius:10px;background:var(--panel2);padding:4px}
+.grow{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;
+  padding:7px 8px;border-radius:8px;cursor:pointer}
+.grow:hover{background:var(--panel)}
+.grow.on{background:color-mix(in srgb,var(--accent) 18%,transparent);outline:1px solid var(--accent)}
+.gres{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:11px;font-weight:800;color:#fff;flex:none}
+.gres.win{background:var(--best)}
+.gres.loss{background:var(--blunder)}
+.gres.draw{background:var(--muted)}
+.gmain{min-width:0}
+.gp{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gp .me{font-weight:700}
+.gp .vs,.gp .el{color:var(--muted);font-size:11.5px}
+.gop{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmeta{text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);flex:none;line-height:1.45}
+.gmeta .tc{text-transform:capitalize}
+@media (max-width:520px){.gmeta{display:none}}
+
 /* ============ main grid ============ */
 .grid{display:grid;grid-template-columns:minmax(320px,1fr) 372px;gap:18px;align-items:start}
 @media (max-width:900px){.grid{grid-template-columns:1fr}}

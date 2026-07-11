@@ -1,8 +1,9 @@
 # Chess Analyzer
 
 A game-review tool that runs **Stockfish 18** entirely in your browser (WebAssembly).
-Paste any PGN or FEN and get a full analysis — move classifications, per-side accuracy,
-an eval bar, captured-material tracking, and live engine lines — with **nothing sent to a server**.
+Type your Chess.com or Lichess username — or paste any PGN or FEN — and get a full analysis:
+move classifications, per-side accuracy, an eval bar, captured-material tracking, and live
+engine lines. **Your games are never uploaded** — the engine runs on your own machine.
 
 **► Live app: https://barabosik.github.io/chess-analyzer/**
 
@@ -10,6 +11,9 @@ an eval bar, captured-material tracking, and live engine lines — with **nothin
 
 ## Features
 
+- **Import your games** — type your **Chess.com** or **Lichess** username and your last 30 games
+  appear: win/loss/draw, both ratings, the opening, time control and date. Click one and it loads,
+  already flipped to the side you played. No login, no API key, no copy-pasting PGNs.
 - **Full game review** — every position is analyzed and each move is labelled
   Brilliant · Great · Best · Good · Book · Inaccuracy · Mistake · Blunder,
   the way an online game review does.
@@ -26,7 +30,10 @@ an eval bar, captured-material tracking, and live engine lines — with **nothin
   the engine follows along. Hit *Return to game* to jump back.
 - **Move sounds** — synthesized in the browser (distinct move / capture / check / castle), with a mute toggle.
 - **Shareable links** — copy a link that reopens the exact game or position for anyone you send it to.
-- **Runs offline & private** — the engine is bundled and executes locally via WebAssembly.
+- **Private analysis** — the engine is bundled and executes locally via WebAssembly, so no game is
+  ever sent anywhere to be analyzed. The *only* network request the app makes is the optional
+  username lookup against Chess.com's and Lichess's public game APIs — and it goes straight from
+  your browser to them, with no server of ours in between.
   Keyboard navigation (`←` `→` `Home` `End`, `f` to flip), light/dark theme.
 
 ## How it works
@@ -38,6 +45,11 @@ an eval bar, captured-material tracking, and live engine lines — with **nothin
    Each move's win-probability loss versus the engine's best line decides its label; sacrifices
    that stay winning are flagged **Brilliant** and critical only-moves **Great**.
    Accuracy is estimated from the average win-probability loss.
+
+4. Username import calls the sites' public, key-less endpoints straight from the browser —
+   `api.chess.com/pub/player/{user}/games/{yyyy}/{mm}` (walking back through the monthly archives)
+   and `lichess.org/api/games/user/{user}`. Both send `Access-Control-Allow-Origin: *`, so this
+   needs no proxy and no server.
 
 Because it's single-threaded WASM, it needs no special server headers and works on plain
 static hosting like GitHub Pages.
@@ -62,6 +74,7 @@ css/style.css         theme tokens, board, panels (light & dark)
 js/engine.js          UCI wrapper around the Stockfish Web Worker
 js/review.js          full-game review + move classification + accuracy
 js/board.js           FEN -> board rendering, highlights, click-to-move
+js/onlinegames.js     Chess.com / Lichess game-list fetching
 js/app.js             UI state, PGN/FEN import, navigation, live analysis
 vendor/chess.js       chess.js (move generation, PGN/FEN)
 vendor/stockfish/     Stockfish 18 lite, single-threaded WASM

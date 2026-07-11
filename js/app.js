@@ -1,7 +1,8 @@
-import { Chess } from "../vendor/chess.js?v=4";
-import { Engine } from "./engine.js?v=4";
-import { renderBoard } from "./board.js?v=4";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=4";
+import { Chess } from "../vendor/chess.js?v=5";
+import { Engine } from "./engine.js?v=5";
+import { renderBoard } from "./board.js?v=5";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=5";
+import { fetchGames, playerSide, outcomeFor } from "./onlinegames.js?v=5";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -35,8 +36,14 @@ const state = {
   live: true, reviewDepth: 14, liveLines: 3,
   explore: null, selected: null,
   sound: true, opening: null,
+  // The Chess.com / Lichess account whose games are listed, and which one is open.
+  acct: { site: "chesscom", user: "", games: [], activeId: null, loading: false },
 };
-try { state.sound = localStorage.getItem("ca_sound") !== "0"; } catch (e) { /* private mode */ }
+try {
+  state.sound = localStorage.getItem("ca_sound") !== "0";
+  state.acct.site = localStorage.getItem("ca_site") || "chesscom";
+  state.acct.user = localStorage.getItem("ca_user") || "";
+} catch (e) { /* private mode */ }
 
 const $ = (id) => document.getElementById(id);
 const el = {};
@@ -45,7 +52,8 @@ const el = {};
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
- "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn"]
+ "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
+ "siteSel","userInput","loadUser","acctMsg","gameList"]
   .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
@@ -181,6 +189,91 @@ function loadFromHash() {
     }
   } catch (e) { /* fall through to empty board */ }
   return false;
+}
+
+// ---------- import from a Chess.com / Lichess account ----------
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtDate(d) {
+  if (!(d instanceof Date) || isNaN(d)) return "";
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined,
+    sameYear ? { month: "short", day: "numeric" } : { year: "numeric", month: "short", day: "numeric" });
+}
+function setAcctMsg(text, isErr) {
+  el.acctMsg.textContent = text || "";
+  el.acctMsg.classList.toggle("err", !!isErr);
+  el.acctMsg.classList.toggle("hidden", !text);
+}
+
+async function loadAccountGames() {
+  const site = el.siteSel.value;
+  const user = el.userInput.value.trim();
+  if (!user || state.acct.loading) return;
+  state.acct.loading = true;
+  el.loadUser.disabled = true;
+  el.gameList.classList.add("hidden");
+  setAcctMsg("Fetching games…", false);
+  try {
+    const games = await fetchGames(site, user, { max: 30 });
+    state.acct = { site, user, games, activeId: null, loading: false };
+    try {
+      localStorage.setItem("ca_site", site);
+      localStorage.setItem("ca_user", user);
+    } catch (e) { /* private mode */ }
+    setAcctMsg(games.length + " recent games — click one to open it.", false);
+    renderGameList();
+  } catch (e) {
+    state.acct.games = [];
+    setAcctMsg(e.message || "Could not load those games.", true);
+  } finally {
+    state.acct.loading = false;
+    el.loadUser.disabled = false;
+  }
+}
+
+const OUTCOME_GLYPH = { win: "W", loss: "L", draw: "½" };
+
+function renderGameList() {
+  const { games, user } = state.acct;
+  el.gameList.innerHTML = "";
+  el.gameList.classList.toggle("hidden", !games.length);
+  for (const g of games) {
+    const side = playerSide(g, user);
+    const out = outcomeFor(g, user);
+    const name = (who, elo, isMe) =>
+      '<span class="' + (isMe ? "me" : "") + '">' + esc(who) + "</span>" +
+      (elo ? ' <span class="el">' + elo + "</span>" : "");
+
+    const row = document.createElement("div");
+    row.className = "grow" + (g.id === state.acct.activeId ? " on" : "");
+    row.innerHTML =
+      '<span class="gres ' + out + '">' + OUTCOME_GLYPH[out] + "</span>" +
+      '<div class="gmain">' +
+        '<div class="gp">' + name(g.white, g.whiteElo, side === "w") +
+          ' <span class="vs">vs</span> ' + name(g.black, g.blackElo, side === "b") + "</div>" +
+        (g.opening ? '<div class="gop">' + esc(g.opening) + "</div>" : "") +
+      "</div>" +
+      '<div class="gmeta"><span class="tc">' + esc(g.timeClass || "") + "</span><br>" +
+        esc(fmtDate(g.date)) + "</div>";
+    row.addEventListener("click", () => openAccountGame(g));
+    el.gameList.appendChild(row);
+  }
+}
+
+function openAccountGame(g) {
+  let parsed;
+  try { parsed = parseGame(g.pgn); }
+  catch (e) { setAcctMsg("Could not read that game's PGN.", true); return; }
+  el.pgnInput.value = g.pgn;
+  // Show the board from the perspective of the player whose games these are.
+  state.flip = playerSide(g, state.acct.user) === "b";
+  loadGame(parsed);                 // clears activeId
+  state.acct.activeId = g.id;
+  renderGameList();
+  document.querySelector(".boardcard").scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 // ---------- captured material ----------
@@ -381,6 +474,10 @@ function loadGame(parsed) {
   state.explore = null;
   state.selected = null;
   state.opening = detectOpening(parsed.moves);
+  // Any other import path (paste / FEN / sample / share link) deselects the
+  // account game list; openAccountGame re-selects the row it just opened.
+  state.acct.activeId = null;
+  renderGameList();
   renderHeader();
   renderOpening();
   renderMoveList();
@@ -768,6 +865,19 @@ function bind() {
     } catch (e) { alert("Invalid FEN:\n" + e.message); }
   };
   $("loadSample").onclick = () => { el.pgnInput.value = SAMPLE_PGN; loadGame(parseGame(SAMPLE_PGN)); };
+
+  el.siteSel.value = state.acct.site;
+  el.userInput.value = state.acct.user;
+  el.loadUser.onclick = loadAccountGames;
+  el.userInput.addEventListener("keydown", (e) => { if (e.key === "Enter") loadAccountGames(); });
+  el.siteSel.onchange = () => {
+    // The listed games belong to the previous site — drop them.
+    state.acct.site = el.siteSel.value;
+    state.acct.games = [];
+    state.acct.activeId = null;
+    renderGameList();
+    setAcctMsg("", false);
+  };
   $("pgnFile").onchange = (e) => {
     const f = e.target.files[0];
     if (!f) return;
