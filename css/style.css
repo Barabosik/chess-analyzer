@@ -187,6 +187,18 @@ select#depthSel{width:100%}
 .rsub{font-size:12.5px;color:var(--muted)}
 .rsub b{color:var(--ink)}
 
+/* ============ share bar ============ */
+.sharebar{margin-top:11px;padding:10px 13px;border-radius:10px;background:var(--panel2);
+  border:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sharetxt{flex:1;min-width:0;font-size:13px;line-height:1.4}
+.sharekind{display:block;font-size:11.5px;color:var(--muted)}
+.sharebar .mini{flex:none;font-weight:600}
+.sharenote{font-size:12px;font-weight:700;color:var(--best);flex:none}
+
+/* ============ time-per-move graph ============ */
+.timenote{font-size:12.5px;color:var(--muted);line-height:1.7;margin:12px 0 0}
+.timenote b{color:var(--ink)}
+
 /* ============ review / summary ============ */
 .review{padding:15px}
 .rev-head{display:flex}

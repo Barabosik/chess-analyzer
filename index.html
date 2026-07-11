@@ -126,6 +126,15 @@
             <div class="rsub" id="readSub">Use ← → keys or click a move.</div>
           </div>
         </div>
+
+        <div class="sharebar hidden" id="shareBar">
+          <div class="sharetxt">
+            <b>Want to share this game?</b>
+            <span class="sharekind" id="shareKind"></span>
+          </div>
+          <button class="primary mini" id="shareBtn2">🔗 Copy link</button>
+          <span class="sharenote hidden" id="shareNote"></span>
+        </div>
       </section>
 
       <!-- RIGHT -->
@@ -184,6 +193,12 @@
     <section class="card graphcard hidden" id="graphCard">
       <div class="sectlabel">Evaluation over the game</div>
       <canvas id="evalGraph" class="evalgraph"></canvas>
+    </section>
+
+    <section class="card graphcard hidden" id="timeCard">
+      <div class="sectlabel">Time spent per move</div>
+      <canvas id="timeGraph" class="evalgraph"></canvas>
+      <p class="timenote hidden" id="timeNote"></p>
     </section>
 
     <section class="card legendcard">

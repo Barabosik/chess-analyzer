@@ -2,7 +2,8 @@ import { Chess } from "../vendor/chess.js?v=6";
 import { Engine } from "./engine.js?v=6";
 import { renderBoard } from "./board.js?v=6";
 import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=6";
-import { fetchGames, fetchGameByUrl, playerSide, outcomeFor } from "./onlinegames.js?v=6";
+import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
+  from "./onlinegames.js?v=6";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -38,6 +39,10 @@ const state = {
   sound: true, opening: null,
   // The Chess.com / Lichess account whose games are listed, and which one is open.
   acct: { site: "chesscom", user: "", games: [], activeId: null, loading: false },
+  // Where the open game came from, when it came from one of the sites. Lets a
+  // share link point at the game instead of carrying its whole PGN.
+  source: null,
+  hasClocks: false,
 };
 try {
   state.sound = localStorage.getItem("ca_sound") !== "0";
@@ -53,7 +58,8 @@ const el = {};
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
- "siteSel","userInput","loadUser","acctMsg","gameList"]
+ "siteSel","userInput","loadUser","acctMsg","gameList",
+ "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote"]
   .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
@@ -151,10 +157,43 @@ function flashChip(msg) {
     el.engineStatus.textContent = state.booted ? "ready" : "starting…";
   }, 1800);
 }
-function buildShareLink() {
+// gzip <-> URL-safe base64, so a pasted-PGN link isn't thousands of characters.
+const b64url = {
+  from: (bytes) => {
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  },
+  to: (s) => {
+    const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  },
+};
+async function gzip(text) {
+  if (!window.CompressionStream) return null;
+  const s = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  return b64url.from(new Uint8Array(await new Response(s).arrayBuffer()));
+}
+async function gunzip(token) {
+  const s = new Blob([b64url.to(token)]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return await new Response(s).text();
+}
+
+// Shortest link that can reopen what's on screen:
+//   #g=  a pointer to the game on Chess.com / Lichess  (~70 chars)
+//   #z=  the PGN, gzipped                              (~1/3 of raw)
+//   #pgn= / #fen=  the older formats, still read below
+async function buildShareLink() {
   const base = location.origin + location.pathname;
+  const token = state.source ? refToToken(state.source) : null;
+  if (token) return base + "#g=" + token;
+
   const pgn = el.pgnInput.value.trim();
   if (state.moves.length && pgn) {
+    const z = await gzip(pgn);
+    if (z) return base + "#z=" + z;
     return base + "#pgn=" + btoa(unescape(encodeURIComponent(pgn)));
   }
   if (state.startFen && state.startFen !== DEFAULT_FEN) {
@@ -163,18 +202,32 @@ function buildShareLink() {
   return base;
 }
 async function copyShareLink() {
-  const url = buildShareLink();
+  const url = await buildShareLink();
   try {
     await navigator.clipboard.writeText(url);
     flashChip("link copied");
+    flashShare("Link copied ✓");
   } catch (e) {
     window.prompt("Copy this link:", url);
   }
 }
+
 // Load a game/position that was shared via the URL hash.
-function loadFromHash() {
+async function loadFromHash() {
   const h = location.hash || "";
   try {
+    if (h.startsWith("#g=")) {
+      const url = tokenToUrl(decodeURIComponent(h.slice(3)));
+      if (!url) return false;
+      await openGameFromLink(url);
+      return true;
+    }
+    if (h.startsWith("#z=")) {
+      const pgn = await gunzip(h.slice(3));
+      el.pgnInput.value = pgn;
+      loadGame(parseGame(pgn));
+      return true;
+    }
     if (h.startsWith("#pgn=")) {
       const pgn = decodeURIComponent(escape(atob(h.slice(5))));
       el.pgnInput.value = pgn;
@@ -189,6 +242,23 @@ function loadFromHash() {
     }
   } catch (e) { /* fall through to empty board */ }
   return false;
+}
+
+// ---------- share bar ----------
+let shareTimer = null;
+function flashShare(msg) {
+  el.shareNote.textContent = msg;
+  el.shareNote.classList.remove("hidden");
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(() => el.shareNote.classList.add("hidden"), 2200);
+}
+function renderShareBar() {
+  const has = state.moves.length > 0 || state.startFen !== DEFAULT_FEN;
+  el.shareBar.classList.toggle("hidden", !has);
+  // A game we can point at needs no PGN in the link at all.
+  el.shareKind.textContent = state.source
+    ? "a short link straight to this game"
+    : "a link that carries the whole game";
 }
 
 // ---------- import from a Chess.com / Lichess account ----------
@@ -244,7 +314,9 @@ async function openGameFromLink(link) {
     const side = playerSide(players, g.user || state.acct.user);
     state.flip = side ? side === "b" : g.color === "black";
 
-    loadGame(parsed);   // also clears the game-list highlight
+    loadGame(parsed);   // also clears the game-list highlight and the source
+    state.source = g.ref || null;
+    renderShareBar();
     setAcctMsg((players.white || "White") + " vs " + (players.black || "Black") + " — loaded.", false);
     document.querySelector(".boardcard").scrollIntoView({ block: "nearest", behavior: "smooth" });
   } catch (e) {
@@ -317,9 +389,11 @@ function openAccountGame(g) {
   el.pgnInput.value = g.pgn;
   // Show the board from the perspective of the player whose games these are.
   state.flip = playerSide(g, state.acct.user) === "b";
-  loadGame(parsed);                 // clears activeId
+  loadGame(parsed);                 // clears activeId and source
   state.acct.activeId = g.id;
+  state.source = g.ref || null;
   renderGameList();
+  renderShareBar();
   document.querySelector(".boardcard").scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
@@ -488,6 +562,120 @@ function drawEvalGraph() {
   ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
 }
 
+// Seconds spent on each move, one bar per move, coloured by how good the move
+// was — so a blunder played in two seconds is impossible to miss.
+function drawTimeGraph() {
+  const show = state.hasClocks && state.moves.length;
+  el.timeCard.classList.toggle("hidden", !show);
+  if (!show) return;
+
+  const cv = el.timeGraph;
+  const W = Math.max(300, cv.getBoundingClientRect().width), H = 64;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px";
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const N = state.moves.length;
+  const spents = state.moves.map((m) => (m.spent == null ? 0 : m.spent));
+  // One long think shouldn't flatten everything else, so scale to the 95th
+  // percentile and let the rare outlier clip at full height.
+  const sorted = [...spents].sort((a, b) => a - b);
+  const cap = Math.max(1, sorted[Math.floor(sorted.length * 0.95)] || 1);
+  const pad = 2;
+  const bw = Math.max(1, (W - pad * 2) / N - 1);
+
+  ctx.fillStyle = cssVar("--panel2");
+  ctx.fillRect(0, 0, W, H);
+
+  state.moves.forEach((m, i) => {
+    const x = pad + (i / N) * (W - pad * 2);
+    const h = Math.min(1, spents[i] / cap) * (H - 8);
+    ctx.fillStyle = state.reviewed ? cssVar(CLASSES[m.cls].v) : cssVar("--muted");
+    ctx.globalAlpha = m.color === "w" ? 1 : 0.55;   // Black's moves sit dimmer
+    ctx.fillRect(x, H - h, bw, h);
+  });
+  ctx.globalAlpha = 1;
+
+  const cx = pad + (Math.max(0, state.ply - 1) / N) * (W - pad * 2) + bw / 2;
+  ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+}
+
+// The line that turns clock data into an actual diagnosis: did the moves that
+// went wrong get less thought than the rest? Errors = inaccuracy or worse; book
+// moves are excluded from the comparison since theory is played instantly.
+const WENT_WRONG = { inaccuracy: 1, mistake: 1, blunder: 1 };
+function timeVerdict(color) {
+  const mine = state.moves.filter((m) => m.color === color && m.spent != null && m.cls !== "book");
+  const bad = mine.filter((m) => WENT_WRONG[m.cls]).map((m) => m.spent);
+  const good = mine.filter((m) => !WENT_WRONG[m.cls]).map((m) => m.spent);
+  if (bad.length < 3 || good.length < 5) return null;   // too small a sample to claim anything
+  return { bad: median(bad), good: median(good), n: bad.length };
+}
+function renderTimeNote() {
+  if (!state.reviewed || !state.hasClocks) { el.timeNote.classList.add("hidden"); return; }
+  const rows = [];
+  for (const c of ["w", "b"]) {
+    const v = timeVerdict(c);
+    if (!v) continue;
+    const who = (c === "w" ? state.headers.White : state.headers.Black) || (c === "w" ? "White" : "Black");
+    const ratio = v.good > 0 ? v.bad / v.good : 1;
+    const verdict = ratio <= 0.6 ? " — the errors were the rushed moves."
+      : ratio >= 1.6 ? " — so the errors came from the long thinks, not from rushing."
+      : " — thinking time wasn’t what separated them.";
+    rows.push("<b>" + esc(who) + "</b> spent a median <b>" + fmtSecs(v.bad) + "</b> on the " +
+      v.n + " moves that went wrong, versus <b>" + fmtSecs(v.good) + "</b> on the rest" + verdict);
+  }
+  el.timeNote.innerHTML = rows.join("<br>");
+  el.timeNote.classList.toggle("hidden", !rows.length);
+}
+
+// ---------- clocks ----------
+// Chess.com and Lichess both stamp every move with the mover's remaining time,
+// as {[%clk 0:09:58.5]}. chess.js drops comments, so read them from the text.
+function parseClocks(pgn) {
+  const out = [];
+  const re = /\[%clk\s+(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)\]/g;
+  let m;
+  while ((m = re.exec(pgn))) out.push(+m[1] * 3600 + +m[2] * 60 + parseFloat(m[3]));
+  return out;
+}
+// "600" / "600+5" / "180+2"; correspondence games ("1/259200") have no clock.
+function parseTimeControl(tc) {
+  if (!tc || tc.includes("/")) return { base: null, inc: 0 };
+  const [b, i] = String(tc).split("+");
+  const base = parseInt(b, 10);
+  return { base: isNaN(base) ? null : base, inc: parseInt(i, 10) || 0 };
+}
+// Seconds a player burned on each move: what their clock lost since their last
+// turn, plus whatever increment they were given back for making the move.
+function attachClocks(moves, pgn, headers) {
+  const clocks = parseClocks(pgn);
+  if (clocks.length !== moves.length || !moves.length) return;
+  const { base, inc } = parseTimeControl(headers.TimeControl);
+  moves.forEach((mv, i) => {
+    mv.clock = clocks[i];
+    const before = i >= 2 ? clocks[i - 2] : base;
+    mv.spent = before == null ? null
+      : Math.max(0, Math.round((before - clocks[i] + inc) * 10) / 10);
+  });
+}
+function fmtSecs(s) {
+  if (s == null) return "";
+  if (s < 10) return s.toFixed(1) + "s";
+  if (s < 60) return Math.round(s) + "s";
+  const m = Math.floor(s / 60);
+  return m + "m " + String(Math.round(s % 60)).padStart(2, "0") + "s";
+}
+const median = (a) => {
+  if (!a.length) return null;
+  const s = [...a].sort((x, y) => x - y);
+  const h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+};
+
 // ---------- parsing ----------
 function parseGame(pgn) {
   const headers = {};
@@ -506,8 +694,10 @@ function parseGame(pgn) {
       uci: m.from + m.to + (m.promotion || ""),
       color: m.color, fenBefore, fenAfter: rc.fen(),
       moveNo: rc.moveNumber() - (m.color === "w" ? 0 : 1),
+      clock: null, spent: null,
     };
   });
+  attachClocks(moves, pgn, headers);
   return { headers, startFen, moves };
 }
 
@@ -521,10 +711,14 @@ function loadGame(parsed) {
   state.explore = null;
   state.selected = null;
   state.opening = detectOpening(parsed.moves);
+  state.hasClocks = parsed.moves.some((m) => m.spent != null);
+  // A pasted game has no site to point at; the importers set this again after.
+  state.source = null;
   // Any other import path (paste / FEN / sample / share link) deselects the
   // account game list; openAccountGame re-selects the row it just opened.
   state.acct.activeId = null;
   renderGameList();
+  renderShareBar();
   renderHeader();
   renderOpening();
   renderMoveList();
@@ -610,6 +804,7 @@ function renderSummary() {
   el.rateBName.textContent = state.headers.Black || "Black";
   el.rateWhite.textContent = estRating(R.accWhite);
   el.rateBlack.textContent = estRating(R.accBlack);
+  renderTimeNote();
   el.counts.innerHTML = "";
   for (const k of CLASS_ORDER) {
     const w = R.counts.w[k] || 0, b = R.counts.b[k] || 0;
@@ -656,6 +851,7 @@ function renderReadout() {
     el.readGlyph.textContent = cl.g;
     el.readMove.textContent = mv.moveNo + (mv.color === "w" ? ". " : "... ") + mv.san + "  —  " + cl.label;
     let sub = "Eval " + fmtEval(mv.cpWhite, mv.mateWhite);
+    if (mv.spent != null) sub += " · took " + fmtSecs(mv.spent);
     if (mv.loss >= 5) sub += " · lost " + mv.loss + "% win chance";
     if (mv.showBetter && mv.bestSan) sub += ' · better was <b class="bestlink">' + mv.bestSan + "</b>";
     el.readSub.innerHTML = sub;
@@ -665,7 +861,8 @@ function renderReadout() {
     el.readGlyph.style.background = "var(--muted)";
     el.readGlyph.textContent = "•";
     el.readMove.textContent = mv.moveNo + (mv.color === "w" ? ". " : "... ") + mv.san;
-    el.readSub.innerHTML = 'Run <b>Analyze game</b> for move classifications.';
+    el.readSub.innerHTML = (mv.spent != null ? "Took " + fmtSecs(mv.spent) + " · r" : "R") +
+      'un <b>Analyze game</b> for move classifications.';
   }
 }
 
@@ -743,6 +940,7 @@ function goto(ply) {
   const act = document.querySelector(".mv.active");
   if (act) act.scrollIntoView({ block: "nearest" });
   drawEvalGraph();
+  drawTimeGraph();
   restartLive();
 }
 
@@ -944,12 +1142,14 @@ function bind() {
     el.live.classList.toggle("off", !state.live);
     if (state.live) restartLive(); else state.engine && state.engine.stopLive();
   };
-  el.evalGraph.addEventListener("click", (e) => {
-    const r = el.evalGraph.getBoundingClientRect();
+  const seekFromGraph = (canvas) => (e) => {
+    const r = canvas.getBoundingClientRect();
     state.explore = null; el.exploreBar.classList.add("hidden");
     goto(Math.round(((e.clientX - r.left) / r.width) * state.moves.length));
-  });
-  window.addEventListener("resize", () => { if (state.reviewed) drawEvalGraph(); });
+  };
+  el.evalGraph.addEventListener("click", seekFromGraph(el.evalGraph));
+  el.timeGraph.addEventListener("click", seekFromGraph(el.timeGraph));
+  window.addEventListener("resize", () => { drawEvalGraph(); drawTimeGraph(); });
 
   el.soundToggle.classList.toggle("on", state.sound);
   el.soundToggle.onclick = () => {
@@ -959,6 +1159,7 @@ function bind() {
     if (state.sound) playMoveSound({ san: "e4" }); // preview the sound when enabling
   };
   el.shareBtn.onclick = copyShareLink;
+  el.shareBtn2.onclick = copyShareLink;
   // Pasting a share link into an already-open tab should load that game.
   window.addEventListener("hashchange", () => { loadFromHash(); });
 
@@ -996,6 +1197,8 @@ bind();
 buildLegend();
 el.depthSel.value = String(state.reviewDepth);
 el.linesSel.value = String(state.liveLines);
-// A shared #pgn= / #fen= link loads that game; otherwise start empty.
-if (!loadFromHash()) loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN });
+// A shared #g= / #z= / #pgn= / #fen= link loads that game; otherwise start empty.
+loadFromHash().then((loaded) => {
+  if (!loaded) loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN });
+});
 boot();

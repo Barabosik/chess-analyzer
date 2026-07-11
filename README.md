@@ -33,7 +33,13 @@ engine lines. **Your games are never uploaded** — the engine runs on your own 
 - **Explore lines** — click pieces to play out your own variations from any position;
   the engine follows along. Hit *Return to game* to jump back.
 - **Move sounds** — synthesized in the browser (distinct move / capture / check / castle), with a mute toggle.
+- **Time spent per move** — Chess.com and Lichess stamp every move with the mover's remaining clock,
+  so the app shows how long each move took, drawn as a bar per move coloured by how good the move was.
+  A blunder played in two seconds is impossible to miss. After a review it states the verdict plainly:
+  *"barab0s1k spent a median 13s on the 3 moves that went wrong, versus 5.6s on the rest."*
 - **Shareable links** — copy a link that reopens the exact game or position for anyone you send it to.
+  For a game imported from Chess.com or Lichess the link is a ~50-character pointer to the game itself;
+  for a pasted PGN it is gzip-compressed (a 4,656-character link becomes 1,718).
 - **Private analysis** — the engine is bundled and executes locally via WebAssembly, so no game is
   ever sent anywhere to be analyzed. The *only* network request the app makes is the optional
   username lookup against Chess.com's and Lichess's public game APIs — and it goes straight from
@@ -62,8 +68,20 @@ engine lines. **Your games are never uploaded** — the engine runs on your own 
    game ids are *not* ordered by date — id ranges overlap month to month for active players — so the
    archives can't be bisected; it's an honest scan back through up to 24 months.
 
+6. Clock times come from the `{[%clk 0:09:58.5]}` comments both sites write into their PGNs.
+   chess.js discards comments, so they're read from the PGN text and paired with the moves; time
+   spent on a move is what that player's clock lost since their previous turn, plus the increment.
+
 Because it's single-threaded WASM, it needs no special server headers and works on plain
 static hosting like GitHub Pages.
+
+## Share link formats
+
+| Hash | Used for | Size |
+|------|----------|------|
+| `#g=cc:<id>:<user>` / `#g=li:<id>` | a game imported from Chess.com / Lichess — re-fetched on open | ~50 chars |
+| `#z=<gzipped pgn>` | a pasted PGN, with no game to point at | ~1/3 of raw |
+| `#pgn=` / `#fen=` | older links | still read, never generated |
 
 ## Run locally
 

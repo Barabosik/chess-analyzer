@@ -61,6 +61,9 @@ async function fetchChessCom(user, max) {
         timeClass: g.time_class || null,
         opening: ecoUrlToName(g.eco),
         rated: !!g.rated,
+        // Enough to re-fetch this game later, so a share link can point at it
+        // instead of carrying the whole PGN.
+        ref: { site: "cc", id: g.url.split("/").pop(), user },
       });
       if (out.length >= max) return out;
     }
@@ -118,6 +121,7 @@ async function fetchLichess(user, max) {
         timeClass: g.speed || null,
         opening: (g.opening && g.opening.name) || null,
         rated: !!g.rated,
+        ref: { site: "li", id: g.id, user: "" },
       };
     });
   if (!out.length) throw new LookupError("That account has no standard games yet.", "empty");
@@ -187,7 +191,10 @@ export async function fetchGameByUrl(input, { onProgress = () => {}, fallbackUse
     if (!res.ok) throw new LookupError("Lichess returned an error (" + res.status + ").", "network");
     const pgn = (await res.text()).trim();
     if (!pgn) throw new LookupError("That game has no moves to analyze.", "empty");
-    return { id: ref.id, url: "https://lichess.org/" + ref.id, pgn, color: ref.color, user: "" };
+    return {
+      id: ref.id, url: "https://lichess.org/" + ref.id, pgn, color: ref.color, user: "",
+      ref: { site: "li", id: ref.id, user: "" },
+    };
   }
 
   // Chess.com publishes games per player per month and has no public
@@ -212,7 +219,10 @@ export async function fetchGameByUrl(input, { onProgress = () => {}, fallbackUse
     const hit = (data.games || []).find((g) => g.url && g.url.split("/").pop() === ref.id);
     if (hit) {
       if (!hit.pgn) throw new LookupError("That game has no moves to analyze.", "empty");
-      return { id: ref.id, url: hit.url, pgn: hit.pgn, color: null, user };
+      return {
+        id: ref.id, url: hit.url, pgn: hit.pgn, color: null, user,
+        ref: { site: "cc", id: ref.id, user },
+      };
     }
   }
   throw new LookupError(
@@ -220,6 +230,25 @@ export async function fetchGameByUrl(input, { onProgress = () => {}, fallbackUse
     "If it’s someone else’s game, Chess.com will only hand it over by player — add " +
     "?username=THEIR_NAME to the link, or paste the game’s PGN below instead.",
     "notfound");
+}
+
+// ---------- share pointers ----------
+// A game that came from one of these sites can be shared as a tiny pointer
+// ("cc:171388438044:barab0s1k") instead of a URL carrying its whole PGN.
+export function refToToken(ref) {
+  if (!ref || !ref.id) return null;
+  return ref.site === "li" ? "li:" + ref.id
+    : "cc:" + ref.id + (ref.user ? ":" + ref.user : "");
+}
+// Turn a token back into a link the normal loader already understands.
+export function tokenToUrl(token) {
+  const p = String(token || "").split(":");
+  if (p[0] === "li" && p[1]) return "https://lichess.org/" + p[1];
+  if (p[0] === "cc" && p[1]) {
+    return "https://www.chess.com/game/live/" + p[1] +
+      (p[2] ? "?username=" + encodeURIComponent(p[2]) : "");
+  }
+  return null;
 }
 
 // Which colour the looked-up player had, and how the game went for them.
