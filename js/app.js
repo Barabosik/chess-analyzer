@@ -39,7 +39,7 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const el = {};
 ["board","evalFill","evalNum","engineStatus","pgnInput","fenInput","depthSel","linesSel",
- "movelist","summary","accWhite","accBlack","accWName","accBName","counts","hdrTitle","hdrMeta",
+ "movelist","summary","accWhite","accBlack","accWName","accBName","rateWhite","rateBlack","rateWName","rateBName","counts","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
@@ -338,6 +338,12 @@ function renderMoveList() {
   }
 }
 
+// Rough single-game strength estimate mapped from accuracy. It's an estimate,
+// not an official rating, and won't match chess.com's proprietary formula exactly.
+function estRating(acc) {
+  return Math.round(Math.max(100, Math.min(2900, 6.8 * Math.exp(0.0575 * acc))) / 25) * 25;
+}
+
 function renderSummary() {
   const R = state.review;
   el.summary.classList.remove("hidden");
@@ -345,6 +351,10 @@ function renderSummary() {
   el.accBName.textContent = state.headers.Black || "Black";
   el.accWhite.textContent = R.accWhite + "%";
   el.accBlack.textContent = R.accBlack + "%";
+  el.rateWName.textContent = state.headers.White || "White";
+  el.rateBName.textContent = state.headers.Black || "Black";
+  el.rateWhite.textContent = estRating(R.accWhite);
+  el.rateBlack.textContent = estRating(R.accBlack);
   el.counts.innerHTML = "";
   for (const k of CLASS_ORDER) {
     const w = R.counts.w[k] || 0, b = R.counts.b[k] || 0;
