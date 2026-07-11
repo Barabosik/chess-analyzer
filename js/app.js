@@ -2,7 +2,7 @@ import { Chess } from "../vendor/chess.js?v=5";
 import { Engine } from "./engine.js?v=5";
 import { renderBoard } from "./board.js?v=5";
 import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=5";
-import { fetchGames, playerSide, outcomeFor } from "./onlinegames.js?v=5";
+import { fetchGames, fetchGameByUrl, playerSide, outcomeFor } from "./onlinegames.js?v=5";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -206,6 +206,48 @@ function setAcctMsg(text, isErr) {
   el.acctMsg.textContent = text || "";
   el.acctMsg.classList.toggle("err", !!isErr);
   el.acctMsg.classList.toggle("hidden", !text);
+}
+
+// The one import field takes either a username or a link to a single game.
+// Anything that looks like a link is handled as one — including links we don't
+// recognise, which then say so instead of being looked up as a username.
+const looksLikeUrl = (s) => /^https?:\/\//i.test(s);
+
+function loadFromInput() {
+  const txt = el.userInput.value.trim();
+  if (!txt || state.acct.loading) return;
+  if (looksLikeUrl(txt)) openGameFromLink(txt);
+  else loadAccountGames();
+}
+
+// Open the one game a Chess.com / Lichess link points at.
+async function openGameFromLink(link) {
+  state.acct.loading = true;
+  el.loadUser.disabled = true;
+  setAcctMsg("Fetching that game…", false);
+  try {
+    const g = await fetchGameByUrl(link, (m) => setAcctMsg(m, false));
+    let parsed;
+    try { parsed = parseGame(g.pgn); }
+    catch (e) { throw new Error("Could not read that game's PGN."); }
+
+    el.pgnInput.value = g.pgn;
+    // Face the board towards whoever the link is about: the ?username= on a
+    // Chess.com link, the /black suffix on a Lichess one, or the last account
+    // searched if it happens to be one of the two players.
+    const players = { white: parsed.headers.White || "", black: parsed.headers.Black || "" };
+    const side = playerSide(players, g.user || state.acct.user);
+    state.flip = side ? side === "b" : g.color === "black";
+
+    loadGame(parsed);   // also clears the game-list highlight
+    setAcctMsg((players.white || "White") + " vs " + (players.black || "Black") + " — loaded.", false);
+    document.querySelector(".boardcard").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch (e) {
+    setAcctMsg(e.message || "Could not open that game.", true);
+  } finally {
+    state.acct.loading = false;
+    el.loadUser.disabled = false;
+  }
 }
 
 async function loadAccountGames() {
@@ -853,6 +895,8 @@ function bind() {
   $("loadPgn").onclick = () => {
     const txt = el.pgnInput.value.trim();
     if (!txt) return;
+    // A link dropped in the PGN box should work too, rather than fail to parse.
+    if (looksLikeUrl(txt)) { el.userInput.value = txt; openGameFromLink(txt); return; }
     try { loadGame(parseGame(txt)); }
     catch (e) { alert("Could not parse PGN:\n" + e.message); }
   };
@@ -868,8 +912,8 @@ function bind() {
 
   el.siteSel.value = state.acct.site;
   el.userInput.value = state.acct.user;
-  el.loadUser.onclick = loadAccountGames;
-  el.userInput.addEventListener("keydown", (e) => { if (e.key === "Enter") loadAccountGames(); });
+  el.loadUser.onclick = loadFromInput;
+  el.userInput.addEventListener("keydown", (e) => { if (e.key === "Enter") loadFromInput(); });
   el.siteSel.onchange = () => {
     // The listed games belong to the previous site — drop them.
     state.acct.site = el.siteSel.value;

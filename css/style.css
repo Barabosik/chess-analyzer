@@ -90,6 +90,9 @@ select#depthSel{width:100%}
 #userInput{flex:1;min-width:150px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);
   color:var(--ink);padding:8px 12px;font-family:inherit;font-size:13px}
 #userInput:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.accthint{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.6}
+.accthint .mono{font-size:11px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px;white-space:nowrap}
 .acctmsg{font-size:12.5px;color:var(--muted);margin-top:9px}
 .acctmsg.err{color:var(--blunder)}
 .impdiv{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--muted);

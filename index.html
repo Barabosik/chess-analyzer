@@ -30,15 +30,19 @@
     <!-- Import -->
     <section class="card import">
       <div class="acct">
-        <label class="lab" for="userInput">Import your games</label>
+        <label class="lab" for="userInput">Import from Chess.com or Lichess</label>
         <div class="acctrow">
-          <select id="siteSel" aria-label="Site">
+          <select id="siteSel" aria-label="Site to search by username">
             <option value="chesscom">Chess.com</option>
             <option value="lichess">Lichess</option>
           </select>
           <input type="text" id="userInput" spellcheck="false" autocomplete="username"
-                 placeholder="your username" />
-          <button class="primary" id="loadUser">Load games</button>
+                 placeholder="your username — or paste a link to a single game" />
+          <button class="primary" id="loadUser">Load</button>
+        </div>
+        <div class="accthint">
+          A username lists your recent games. A game link opens that exact game —
+          <span class="mono">chess.com/game/live/…?username=…</span> or <span class="mono">lichess.org/…</span>
         </div>
         <div class="acctmsg hidden" id="acctMsg"></div>
         <div class="gamelist hidden" id="gameList"></div>

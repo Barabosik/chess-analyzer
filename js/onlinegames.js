@@ -130,6 +130,93 @@ export function fetchGames(site, user, { max = 30 } = {}) {
   return site === "lichess" ? fetchLichess(u, max) : fetchChessCom(u, max);
 }
 
+// ---------- open one specific game from its link ----------
+
+// Understands the links both sites hand out, e.g.
+//   https://www.chess.com/game/live/171388438044?username=barab0s1k
+//   https://www.chess.com/analysis/game/live/171388438044?tab=review
+//   https://lichess.org/kAdOQKeh          (also /kAdOQKeh/black, and 12-char player links)
+export function parseGameUrl(input) {
+  const s = (input || "").trim();
+  if (!/^https?:\/\//i.test(s)) return null;
+  let u;
+  try { u = new URL(s); } catch (e) { return null; }
+  const host = u.hostname.replace(/^www\./, "").toLowerCase();
+  const segs = u.pathname.split("/").filter(Boolean);
+
+  if (host === "lichess.org") {
+    // The first path segment is the 8-char game id; player links append a
+    // 4-char token, and the board may be pinned to a colour.
+    const seg = segs.find((x) => /^[a-zA-Z0-9]{8,12}$/.test(x));
+    if (!seg) return null;
+    return {
+      site: "lichess",
+      id: seg.slice(0, 8),
+      color: segs.includes("black") ? "black" : segs.includes("white") ? "white" : null,
+    };
+  }
+
+  if (host === "chess.com") {
+    // The id is the last all-digits segment, wherever it sits in the path.
+    const id = [...segs].reverse().find((x) => /^\d+$/.test(x));
+    if (!id) return null;
+    return { site: "chesscom", id, user: (u.searchParams.get("username") || "").trim() };
+  }
+  return null;
+}
+
+// How far back through the monthly archives we will hunt for one game.
+// Chess.com game ids are NOT ordered by date (months overlap heavily for active
+// players), so there is no way to jump to the right month — it has to be a scan.
+const MAX_ARCHIVE_SCAN = 24;
+
+export async function fetchGameByUrl(input, onProgress = () => {}) {
+  const ref = parseGameUrl(input);
+  if (!ref) throw new LookupError("That isn't a Chess.com or Lichess game link.", "badurl");
+
+  if (ref.site === "lichess") {
+    let res;
+    try {
+      res = await fetch("https://lichess.org/game/export/" + ref.id + "?clocks=true&opening=true",
+        { headers: { Accept: "application/x-chess-pgn" } });
+    } catch (e) {
+      throw new LookupError("Could not reach Lichess. Check your connection.", "network");
+    }
+    if (res.status === 404) throw new LookupError("Lichess has no game with that id.", "notfound");
+    if (res.status === 429) throw new LookupError("Lichess is rate-limiting us. Wait a moment.", "ratelimit");
+    if (!res.ok) throw new LookupError("Lichess returned an error (" + res.status + ").", "network");
+    const pgn = (await res.text()).trim();
+    if (!pgn) throw new LookupError("That game has no moves to analyze.", "empty");
+    return { id: ref.id, url: "https://lichess.org/" + ref.id, pgn, color: ref.color, user: "" };
+  }
+
+  // Chess.com publishes games per player per month and has no public
+  // single-game endpoint (its internal one sends no CORS header, so a static
+  // page can't call it). The player's name is therefore required — which is
+  // exactly what the ?username= on their Share links is for.
+  if (!ref.user) {
+    throw new LookupError(
+      "A Chess.com link needs the ?username=… part that their Share button adds — " +
+      "without it there's no public way to look the game up. Add it, or search by username instead.",
+      "nouser");
+  }
+  const arch = await (await getJson(
+    "https://api.chess.com/pub/player/" + encodeURIComponent(ref.user) + "/games/archives")).json();
+  const months = (arch.archives || []).slice().reverse().slice(0, MAX_ARCHIVE_SCAN);
+  for (const month of months) {
+    onProgress("Searching " + ref.user + "’s games (" + month.slice(-7).replace("/", "-") + ")…");
+    const data = await (await getJson(month)).json();
+    const hit = (data.games || []).find((g) => g.url && g.url.split("/").pop() === ref.id);
+    if (hit) {
+      if (!hit.pgn) throw new LookupError("That game has no moves to analyze.", "empty");
+      return { id: ref.id, url: hit.url, pgn: hit.pgn, color: null, user: ref.user };
+    }
+  }
+  throw new LookupError(
+    "Couldn’t find that game in " + ref.user + "’s last " + months.length + " months of play. " +
+    "Does the username in the link match a player in the game?", "notfound");
+}
+
 // Which colour the looked-up player had, and how the game went for them.
 export function playerSide(game, user) {
   const u = (user || "").toLowerCase();
