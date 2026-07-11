@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Game Analyzer — Stockfish in your browser</title>
+  <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <div class="wrap">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="knight">♞</span>
+        <div>
+          <h1>Chess Game Analyzer</h1>
+          <div class="tagline">Stockfish 18 · runs entirely in your browser</div>
+        </div>
+      </div>
+      <div class="topright">
+        <span class="statuschip" id="engineStatus">starting…</span>
+        <button class="ghost" id="themeToggle" title="Toggle light / dark">◐</button>
+      </div>
+    </header>
+
+    <!-- Import -->
+    <section class="card import">
+      <div class="import-grid">
+        <div class="imp-pgn">
+          <label class="lab">Game (PGN)</label>
+          <textarea id="pgnInput" spellcheck="false" placeholder="Paste a PGN here…"></textarea>
+          <div class="btnrow">
+            <button class="primary" id="loadPgn">Load PGN</button>
+            <button id="loadSample">Load sample</button>
+            <label class="filebtn">Upload .pgn<input type="file" id="pgnFile" accept=".pgn,.txt" hidden /></label>
+          </div>
+        </div>
+        <div class="imp-side">
+          <label class="lab">Position (FEN)</label>
+          <input type="text" id="fenInput" spellcheck="false" placeholder="rnbqkbnr/pppppppp/8/…" />
+          <button id="loadFen">Load FEN</button>
+          <label class="lab" style="margin-top:14px">Review depth</label>
+          <select id="depthSel">
+            <option value="10">10 — fastest</option>
+            <option value="12">12 — fast</option>
+            <option value="14">14 — balanced</option>
+            <option value="16">16 — deeper</option>
+            <option value="18">18 — deepest</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <!-- LEFT: board -->
+      <section class="card boardcard">
+        <div class="ghead">
+          <h2 class="serif" id="hdrTitle">—</h2>
+          <div class="ghmeta" id="hdrMeta"></div>
+        </div>
+
+        <div class="playerline top">
+          <span class="chip dark"></span>
+          <span class="nm" id="pBName">Black</span><span class="elo" id="pBElo"></span>
+          <span class="captured" id="capB"></span>
+        </div>
+
+        <div class="boardrow">
+          <div class="evalbar"><div class="evalfill" id="evalFill"></div><span class="evalnum bot" id="evalNum">+0.20</span></div>
+          <div class="board" id="board"></div>
+        </div>
+
+        <div class="playerline bot">
+          <span class="chip light"></span>
+          <span class="nm" id="pWName">White</span><span class="elo" id="pWElo"></span>
+          <span class="captured" id="capW"></span>
+        </div>
+
+        <div class="controls">
+          <button id="bStart" title="Start (Home)">⏮</button>
+          <button id="bPrev" title="Previous (←)">◀</button>
+          <button id="bNext" title="Next (→)">▶</button>
+          <button id="bEnd" title="End (End)">⏭</button>
+          <button id="bFlip" title="Flip board (f)">⇅</button>
+        </div>
+
+        <div class="explorebar hidden" id="exploreBar">
+          <span class="expl-label">Line</span>
+          <span class="expl-txt mono" id="exploreTxt"></span>
+          <button id="returnGame" class="mini">Return to game</button>
+        </div>
+
+        <div class="readout">
+          <div class="cglyph" id="readGlyph">○</div>
+          <div class="rtxt">
+            <div class="rmove" id="readMove">Starting position</div>
+            <div class="rsub" id="readSub">Use ← → keys or click a move.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT -->
+      <div class="rightcol">
+        <section class="card review">
+          <div class="rev-head">
+            <button class="primary big" id="reviewBtn" disabled>Analyze game</button>
+          </div>
+          <div class="progress hidden" id="progress">
+            <div class="pbar"><div class="pfill" id="progressBar"></div></div>
+            <div class="ptxt" id="progressTxt"></div>
+          </div>
+          <div class="summary hidden" id="summary">
+            <div class="acc">
+              <div class="accbox"><div class="who" id="accWName">White</div><div class="n" id="accWhite">—</div><div class="l">Accuracy</div></div>
+              <div class="accbox"><div class="who" id="accBName">Black</div><div class="n" id="accBlack">—</div><div class="l">Accuracy</div></div>
+            </div>
+            <div class="chead"><span>W</span><span>B</span></div>
+            <div class="counts" id="counts"></div>
+          </div>
+        </section>
+
+        <section class="card live" id="live">
+          <div class="live-head">
+            <button class="toggle on" id="liveToggle">Engine: on</button>
+            <div class="live-meta"><span class="mono" id="liveEval">—</span><span class="dim mono" id="liveDepth"></span></div>
+          </div>
+          <div class="assess hidden" id="assessBox">
+            <div class="assess-row" id="assessPlayed"></div>
+            <div class="assess-row" id="assessBest"></div>
+          </div>
+          <div class="livelines" id="liveLinesBox"></div>
+          <div class="live-foot"><span id="engineName">Stockfish</span> · <select id="linesSel" class="tinysel">
+            <option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option><option value="4">4 lines</option>
+          </select></div>
+        </section>
+
+        <section class="card movescard">
+          <div class="sectlabel">Moves</div>
+          <div class="movelist" id="movelist"></div>
+        </section>
+      </div>
+    </div>
+
+    <section class="card legendcard">
+      <div class="sectlabel">Move classification</div>
+      <div class="legend" id="legend"></div>
+      <p class="note">
+        Evaluations by <b id="footEngine">Stockfish 18 (lite)</b> from White's point of view (+ favors White).
+        Accuracy and labels are engine-derived estimates. <b>Brilliant</b> = a sound sacrifice;
+        <b>Great</b> = a critical only-move. Nothing leaves your device — the engine runs locally via WebAssembly.
+      </p>
+    </section>
+
+    <footer class="foot">
+      <span>Powered by <a href="https://github.com/official-stockfish/Stockfish">Stockfish</a> (GPLv3) compiled to WebAssembly, and <a href="https://github.com/jhlywa/chess.js">chess.js</a>.</span>
+    </footer>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
