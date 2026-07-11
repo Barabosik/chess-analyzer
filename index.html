@@ -127,8 +127,13 @@
             <div class="live-meta"><span class="mono" id="liveEval">—</span><span class="dim mono" id="liveDepth"></span></div>
           </div>
           <div class="assess hidden" id="assessBox">
-            <div class="assess-row" id="assessPlayed"></div>
-            <div class="assess-row" id="assessBest"></div>
+            <div class="assess-head">
+              <span class="cg" id="assessGlyph"></span>
+              <span class="assess-title" id="assessHead"></span>
+              <span class="evchip" id="assessEval"></span>
+            </div>
+            <div class="assess-note" id="assessNote"></div>
+            <div class="assess-best" id="assessBest"></div>
           </div>
           <div class="livelines" id="liveLinesBox"></div>
           <div class="live-foot"><span id="engineName">Stockfish</span> · <select id="linesSel" class="tinysel">
@@ -142,6 +147,11 @@
         </section>
       </div>
     </div>
+
+    <section class="card graphcard hidden" id="graphCard">
+      <div class="sectlabel">Evaluation over the game</div>
+      <canvas id="evalGraph" class="evalgraph"></canvas>
+    </section>
 
     <section class="card legendcard">
       <div class="sectlabel">Move classification</div>

@@ -42,7 +42,8 @@ const el = {};
  "movelist","summary","accWhite","accBlack","accWName","accBName","counts","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
- "exploreTxt","engineName","capW","capB","assessBox","assessPlayed","assessBest"].forEach((k) => (el[k] = $(k)));
+ "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
+ "assessNote","assessBest","graphCard","evalGraph"].forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
 function fmtEval(cp, mate) {
@@ -111,22 +112,89 @@ function renderMaterial(fen) {
   el.capB.innerHTML = capHtml(capByBlack, "w") + (diff < 0 ? '<span class="adv">+' + -diff + "</span>" : "");
 }
 
+// Plain-English, coach-style note for a classified move.
+function coachNote(mv) {
+  const b = mv.bestSan;
+  const cap = mv.san.includes("x");
+  const check = /[+#]/.test(mv.san);
+  switch (mv.cls) {
+    case "brilliant": return "A brilliant stroke — you give up material for a decisive initiative.";
+    case "great": return "A great find — practically the only move that holds your advantage.";
+    case "best": return check ? "The sharpest move — you keep the pressure on."
+      : cap ? "The best move — you grab the key material." : "The strongest move in the position.";
+    case "good": return "A sound, solid move — nothing lost.";
+    case "book": return "A well-known opening move.";
+    case "inaccuracy": return "Slightly inaccurate" + (b ? " — " + b + " was a touch stronger." : ".");
+    case "mistake": return "A mistake — this hands your opponent chances" + (b ? ". " + b + " was better." : ".");
+    case "blunder": return "A blunder — this drops material or the game" + (b ? ". " + b + " was much stronger." : ".");
+    default: return "";
+  }
+}
+
 function renderAssessment() {
   const show = state.reviewed && state.ply > 0 && !state.explore;
   if (!show) { el.assessBox.classList.add("hidden"); return; }
   const mv = state.moves[state.ply - 1];
   const cl = CLASSES[mv.cls];
-  el.assessPlayed.innerHTML =
-    '<span class="evchip">' + fmtEval(mv.cpWhite, mv.mateWhite) + "</span>" +
-    '<span class="cg" style="color:var(' + cl.v + ')">' + cl.g + "</span>" +
-    "<b>" + mv.san + "</b> is " + cl.label.toLowerCase();
+  el.assessGlyph.textContent = cl.g;
+  el.assessGlyph.style.background = "var(" + cl.v + ")";
+  el.assessHead.innerHTML = "<b>" + mv.san + "</b> is " + cl.label.toLowerCase();
+  el.assessEval.textContent = fmtEval(mv.cpWhite, mv.mateWhite);
+  el.assessNote.textContent = coachNote(mv);
   if (mv.bestSan && mv.bestSan !== mv.san) {
     el.assessBest.classList.remove("hidden");
     el.assessBest.innerHTML =
-      '<span class="evchip">' + fmtEval(mv.bestCpWhite, mv.bestMateWhite) + "</span>" +
-      '<span class="cg" style="color:var(--best)">★</span><b>' + mv.bestSan + "</b> is best";
+      '<span class="cg" style="color:var(--best)">★</span> <b>' + mv.bestSan + "</b> is best" +
+      '<span class="evchip">' + fmtEval(mv.bestCpWhite, mv.bestMateWhite) + "</span>";
   } else el.assessBest.classList.add("hidden");
   el.assessBox.classList.remove("hidden");
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+}
+
+// Win-probability line across the whole game with dots on notable moves.
+function drawEvalGraph() {
+  if (!state.reviewed || !state.moves.length) { el.graphCard.classList.add("hidden"); return; }
+  el.graphCard.classList.remove("hidden");
+  const cv = el.evalGraph;
+  const W = Math.max(300, cv.getBoundingClientRect().width), H = 100;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px";
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const N = state.moves.length;
+  const pts = [winPct(20)];
+  for (const m of state.moves) pts.push(m.mateWhite != null ? (m.mateWhite > 0 ? 100 : 0) : winPct(m.cpWhite));
+  const X = (i) => (i / N) * W;
+  const Y = (v) => H - (v / 100) * H;
+
+  ctx.fillStyle = cssVar("--panel2"); ctx.fillRect(0, 0, W, H);          // black-advantage ground
+  ctx.beginPath(); ctx.moveTo(0, H);
+  pts.forEach((v, i) => ctx.lineTo(X(i), Y(v)));
+  ctx.lineTo(W, H); ctx.closePath();
+  ctx.fillStyle = "#e9e7df"; ctx.fill();                                  // white-advantage area
+
+  ctx.strokeStyle = "rgba(128,128,128,.45)"; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(0, Y(50)); ctx.lineTo(W, Y(50)); ctx.stroke(); ctx.setLineDash([]);
+
+  ctx.strokeStyle = "rgba(60,66,74,.55)"; ctx.lineWidth = 1;
+  ctx.beginPath(); pts.forEach((v, i) => (i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)))); ctx.stroke();
+
+  const notable = { brilliant: 1, great: 1, inaccuracy: 1, mistake: 1, blunder: 1 };
+  state.moves.forEach((m, i) => {
+    if (!notable[m.cls]) return;
+    ctx.beginPath(); ctx.arc(X(i + 1), Y(pts[i + 1]), 3.4, 0, 7);
+    ctx.fillStyle = cssVar(CLASSES[m.cls].v); ctx.fill();
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2; ctx.stroke();
+  });
+
+  const cx = X(state.ply);
+  ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
 }
 
 // ---------- parsing ----------
@@ -326,6 +394,7 @@ function goto(ply) {
     e.classList.toggle("active", +e.dataset.ply === state.ply));
   const act = document.querySelector(".mv.active");
   if (act) act.scrollIntoView({ block: "nearest" });
+  drawEvalGraph();
   restartLive();
 }
 
@@ -491,6 +560,13 @@ function bind() {
     el.live.classList.toggle("off", !state.live);
     if (state.live) restartLive(); else state.engine && state.engine.stopLive();
   };
+  el.evalGraph.addEventListener("click", (e) => {
+    const r = el.evalGraph.getBoundingClientRect();
+    state.explore = null; el.exploreBar.classList.add("hidden");
+    goto(Math.round(((e.clientX - r.left) / r.width) * state.moves.length));
+  });
+  window.addEventListener("resize", () => { if (state.reviewed) drawEvalGraph(); });
+
   $("themeToggle").onclick = () => {
     const cur = document.documentElement.getAttribute("data-theme");
     const next = cur === "dark" ? "light" : cur === "light" ? "dark"
