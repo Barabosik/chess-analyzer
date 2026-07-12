@@ -78,6 +78,46 @@ It is **not fixable by re-fitting**: accuracy does correlate with strength
 game inflates accuracy and a sharp one deflates it whoever is playing. Single-game
 accuracy cannot pin down a rating. Don't add it back.
 
+## Move motifs: naming why a move was bad (`js/motifs.js`)
+
+A blunder used to say the same generic sentence every time. `explainMove` now names
+the reason — hung piece, losing exchange, fork, allowed mate, missed material, missed
+mate — and `coachNote` shows it in place of the generic line. A per-side rollup
+(`rollup`) states the pattern when one motif dominates a game's mistakes.
+
+**Detection is static, never the engine's reply.** Asking "what would the engine play
+back?" is Brilliant bug #2 all over again: it blames a move for material that was
+already hanging (the quiet `h3`) and its reply isn't stable between runs. So motifs are
+decided by `seeGain` + geometry (`attackers`), reading only the position. The engine's
+*score* is still used — to know a mistake happened, and for the two mate motifs, which
+are therefore exact. Its *choice of move* is not.
+
+**The load-bearing guards, each of which was a false positive first:**
+- **Already-hanging.** A material motif fires only if the move increased what the
+  opponent can win, compared on a null-move of the position before. Without it, a quiet
+  move played while a piece hangs gets blamed for the hang.
+- **Net of the grab.** An even recapture (Bxc6 … bxc6) reads as "hung a bishop" unless
+  you credit what the move itself captured. Word by *net* material lost, not gross.
+- **Class consistency.** A "free rook" on a move the engine rated a mere *inaccuracy* is
+  a contradiction — the piece is compensated. Minor-piece+ material claims are suppressed
+  on inaccuracies; missed-material fires on mistakes/blunders only.
+- **You didn't miss what you took.** Missed-material is silent if the played move was
+  itself a capture.
+- **Fork must be real.** Only check-forks, and only when the checking piece can't just be
+  taken (`seeGain` on it) and the second target is genuinely winnable.
+
+**Measured** on 10 real games (84 inaccuracy/mistake/blunder moves, depth 12): 24 got a
+motif (**29% coverage** — the rest are positional, correctly silent), and every one of
+the 24 was correct on hand-check (hung-piece ×6, allowed-mate ×5, fork ×4, missed-mate
+×4, missed-material ×3, losing-exchange ×2). Coverage is a *reporting* number, not a
+target — chasing it is how you get a detector that invents reasons. Re-derive these if
+you touch the thresholds. `tests/motifs.test.mjs` pins the hung-piece and allowed-mate
+wording, determinism, and the already-hanging guard.
+
+Deferred on purpose: **pin/skewer** (its material usually resurfaces as a plain hung
+piece a move later, so it's hard to attribute cleanly) and **non-check forks** (lower
+precision without a deeper search).
+
 ## Things that are still suspect (unmeasured)
 
 - **The accuracy formula's constants** (`103.1668 * exp(-0.04354 * avg) - 3.1669`)

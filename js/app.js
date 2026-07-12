@@ -1,9 +1,10 @@
-import { Chess } from "../vendor/chess.js?v=18";
-import { Engine } from "./engine.js?v=18";
-import { renderBoard } from "./board.js?v=18";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=18";
+import { Chess } from "../vendor/chess.js?v=19";
+import { Engine } from "./engine.js?v=19";
+import { renderBoard } from "./board.js?v=19";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=19";
+import { rollup } from "./motifs.js?v=19";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=18";
+  from "./onlinegames.js?v=19";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -53,7 +54,7 @@ try {
 const $ = (id) => document.getElementById(id);
 const el = {};
 ["board","evalFill","evalNum","engineStatus","pgnInput","fenInput","depthSel","linesSel",
- "movelist","summary","counts","hdrTitle","hdrMeta",
+ "movelist","summary","counts","motifNote","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
@@ -452,6 +453,9 @@ function coachNote(mv) {
   const b = mv.bestSan;
   const cap = mv.san.includes("x");
   const check = /[+#]/.test(mv.san);
+  // If we can name WHY the move went wrong, lead with that — the ★ best move is
+  // shown separately below. Falls back to the generic line when no motif fired.
+  if (mv.motif && mv.motif.text) return mv.motif.text;
   switch (mv.cls) {
     case "brilliant": return "A brilliant stroke — you give up material for a decisive initiative.";
     case "great": return "A great find — practically the only move that holds your advantage.";
@@ -653,6 +657,21 @@ function renderTimeNote() {
   el.timeNote.classList.toggle("hidden", !rows.length);
 }
 
+// A one-line-per-side pattern across the game's mistakes, e.g. "3 of 4 costly
+// moves left a piece undefended." Silent unless one motif dominates a side.
+function renderMotifNote() {
+  if (!state.reviewed) { el.motifNote.classList.add("hidden"); return; }
+  const rows = [];
+  for (const c of ["w", "b"]) {
+    const line = rollup(state.moves, c);
+    if (!line) continue;
+    const who = (c === "w" ? state.headers.White : state.headers.Black) || (c === "w" ? "White" : "Black");
+    rows.push("<b>" + esc(who) + "</b> — " + line);
+  }
+  el.motifNote.innerHTML = rows.join("<br>");
+  el.motifNote.classList.toggle("hidden", !rows.length);
+}
+
 // ---------- clocks ----------
 // Chess.com and Lichess both stamp every move with the mover's remaining time,
 // as {[%clk 0:09:58.5]}. chess.js drops comments, so read them from the text.
@@ -829,6 +848,7 @@ function renderSummary() {
     '<div class="a"><b>' + R.accBlack + "%</b><span>" + esc(state.headers.Black || "Black") + "</span></div>";
   el.accStrip.classList.remove("hidden");
   renderTimeNote();
+  renderMotifNote();
   el.counts.innerHTML = "";
   for (const k of CLASS_ORDER) {
     const w = R.counts.w[k] || 0, b = R.counts.b[k] || 0;
@@ -1216,6 +1236,7 @@ async function runReview() {
   state.review = res;
   state.moves = res.moves;
   state.reviewed = true;
+  window.__moves = res.moves;        // test hook: lets the suite read classifications + motifs
   renderSummary();
   renderMoveList();
   goto(state.ply);

@@ -1,9 +1,10 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=18";
-import { OPENINGS } from "../vendor/openings.js?v=18";
+import { Chess } from "../vendor/chess.js?v=19";
+import { OPENINGS } from "../vendor/openings.js?v=19";
+import { explainMove } from "./motifs.js?v=19";
 
-const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+export const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
 // A position is "book" when it appears in the opening database (real theory),
 // rather than guessing by move number.
@@ -120,7 +121,7 @@ function material(chess, color) {
 // and gives the same answer every time.
 const SEE_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };   // king captures last
 
-function seeGain(fen, square) {
+export function seeGain(fen, square) {
   const c = new Chess(fen);
   const caps = c.moves({ verbose: true }).filter((m) => m.to === square && m.captured);
   if (!caps.length) return 0;
@@ -285,6 +286,10 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     else cls = "blunder";
     counts[mv.color][cls]++;
 
+    // Name WHY a move went wrong (hung piece, fork, allowed mate, missed
+    // material...). Decided statically from the position -- see js/motifs.js.
+    const motif = explainMove({ ...mv, cls }, before, after);
+
     out.push({
       ...mv,
       cpWhite: evalWhite(after.best),
@@ -299,6 +304,7 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
       bestCpWhite: evalWhite(before.best),       // eval if the best move had been played
       bestMateWhite: before.best ? before.best.mate : null,
       showBetter: !bookEntry && (cls === "inaccuracy" || cls === "mistake" || cls === "blunder"),
+      motif: bookEntry ? null : motif,
       // only positions the book actually names carry an opening name; bridged
       // plies are theory without a name of their own
       opening: named[i] ? named[i][1] : null,
