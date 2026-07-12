@@ -126,7 +126,9 @@ select#depthSel{width:100%}
 @media (max-width:520px){.gmeta{display:none}}
 
 /* ============ main grid ============ */
-.grid{display:grid;grid-template-columns:minmax(320px,1fr) 372px;gap:18px;align-items:start}
+/* The wider right column gives the moves room to breathe, and shrinks the board
+   just enough that board and move list fit on a laptop screen together. */
+.grid{display:grid;grid-template-columns:minmax(320px,1fr) 480px;gap:18px;align-items:start}
 @media (max-width:900px){.grid{grid-template-columns:1fr}}
 /* Grid and flex items are min-width:auto by default, so they refuse to shrink
    below their content and shove the whole page sideways on a phone. */
@@ -310,7 +312,7 @@ select#depthSel{width:100%}
 .mv.active{background:color-mix(in srgb,var(--accent) 22%,transparent);outline:1px solid var(--accent)}
 /* The move can shrink and ellipsis; the glyph and eval never shrink, so they
    can't be overlapped by a long SAN in a narrow column. */
-.mv .san{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv .san{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mv .cg{flex:none;margin-left:auto;font-weight:800;font-size:12px}
 .mv .ev{flex:none;color:var(--muted);font-size:11.5px;min-width:46px;text-align:right}
 .mv.empty{cursor:default}
