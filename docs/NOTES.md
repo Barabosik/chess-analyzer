@@ -153,12 +153,61 @@ leg first, then square into the target — the way Chess.com and Lichess draw it
 shafts are therefore `<polyline>`, not `<line>` (two points when straight, three when
 bent); `tests/arrows.test.mjs` counts and shapes them.
 
+## Review caching (`js/cache.js`)
+
+A review is ~100 engine searches and a **pure function of (game, depth, engine)**, so it
+is cached in IndexedDB and re-opening a game is instant. localStorage was the wrong
+store: a reviewed game is 20–40 KB (each move carries its principal variation — that's
+what makes "Explain" instant), so its ~5 MB ceiling would hold barely a hundred games
+before throwing. LRU, 60 games.
+
+**Every input that changes the answer is in the key** (`v1|engine|depth|hash|len`). The
+worst bug this file could cause is silently serving a depth-12 review to someone who
+asked for depth-22, so `tests/cache.test.mjs` pins exactly that: review at 12, ask for
+16, assert it re-runs; then assert both are cached side by side. IndexedDB is refused
+outright in some private windows — every call degrades to a no-op rather than failing.
+
+## Threading: measured, and rejected
+
+Multi-threaded Stockfish (`stockfish-18-lite.wasm` + `coi-serviceworker` to fake
+COOP/COEP on Pages, which cannot send headers) looked like a free 4–8x. **It is the
+opposite.** Measured on the sample game, depth 14, 103 plies, 10 cores:
+
+| | time | reproducible |
+|---|---|---|
+| `Threads=1` (what ships) | **9.9 s** | yes — identical labels + evals |
+| `Threads=8` | **53–61 s** | **no — 21 of 103 labels flipped between two runs** |
+
+A review is ~100 *short* fixed-depth searches, and Lazy SMP's thread-sync overhead
+dwarfs the useful work at that size; threads pay off in one *long* search, not many
+small ones. And Stockfish is only reproducible at `Threads=1`, so it also reintroduces
+the label-flipping the hash-clearing above exists to prevent. Don't reach for this again
+without re-measuring.
+
+The full-net builds (`stockfish-18.wasm`) are **107.8 MB** — over GitHub's hard 100 MB
+per-file limit, and Pages does not resolve Git LFS pointers, so they cannot be
+self-hosted here. unpkg does serve them with `cross-origin-resource-policy: cross-origin`,
+and the worker takes its wasm URL from `self.location.hash`, so an opt-in "maximum
+strength" engine is possible. Not yet measured for whether it changes any verdict.
+
 ## Things that are still suspect (unmeasured)
 
 - **The accuracy formula's constants** (`103.1668 * exp(-0.04354 * avg) - 3.1669`)
   are inherited and unverified. Same treatment: measure before trusting.
-- **Book moves count toward accuracy**, which inflates it. Arguably they shouldn't.
 - **`great`** (critical only-move) uses `gap >= 12` win% — never measured.
+- **The phase boundaries** (`phaseOf`: endgame at ≤ 20 non-pawn material, opening = book
+  length floored at ply 12 / capped at 24) are a presentation heuristic, picked not
+  measured. They decide only which bucket a move is reported in, never its label.
+
+## Fixed: book moves no longer inflate accuracy
+
+They used to count as ~0%-loss moves of your own. They aren't your play — they are
+theory you remembered, so the more of it you knew, the better your "accuracy" looked
+without you having found anything over the board. Accuracy is now computed over non-book
+moves only (`rows[]` carries the raw, unrounded loss, so overall and per-phase accuracy
+come from the same numbers). Measured on the sample game at depth 14 (8 book moves of
+103): **95.4/92.4 → 95.1/91.8**, so +0.3 White and +0.6 Black of inflation — small on a
+lightly-booked game, and it grows with the amount of theory played.
 
 ## What's next, in order
 

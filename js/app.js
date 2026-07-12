@@ -1,10 +1,11 @@
-import { Chess } from "../vendor/chess.js?v=24";
-import { Engine } from "./engine.js?v=24";
-import { renderBoard } from "./board.js?v=24";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=24";
-import { rollup } from "./motifs.js?v=24";
+import { Chess } from "../vendor/chess.js?v=25";
+import { Engine } from "./engine.js?v=25";
+import { renderBoard } from "./board.js?v=25";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=25";
+import { rollup } from "./motifs.js?v=25";
+import { reviewKey, getCached, putCached } from "./cache.js?v=25";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=24";
+  from "./onlinegames.js?v=25";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -68,7 +69,7 @@ const el = {};
 ["board","evalFill","evalNum","engineStatus","pgnInput","fenInput","depthSel","linesSel",
  "movelist","summary","counts","motifNote","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
- "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
+ "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar","phases","phaseRows",
  "exploreTxt","explainBar","explainTxt","explainPrev","explainNext","explainDone","engineName","capW","capB","assessBox",
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
  "siteSel","userInput","loadUser","acctMsg","gameList",
@@ -948,6 +949,29 @@ function renderMoveList() {
 // quiet game inflates accuracy and a sharp one deflates it whoever is playing.
 // A number that wrong is worse than no number, so the estimate is gone.
 
+const PHASE_LABEL = { opening: "Opening", middlegame: "Middlegame", endgame: "Endgame" };
+
+// Accuracy by phase. One accuracy number says how well you played; three say WHERE you
+// played badly, which is the only one of them you can act on.
+function renderPhases() {
+  const P = state.review.phases;
+  if (!P) { el.phases.classList.add("hidden"); return; }
+  const rows = [];
+  for (const ph of ["opening", "middlegame", "endgame"]) {
+    const w = P[ph].w, b = P[ph].b;
+    if (!w && !b) continue;                       // neither side had a move to judge here
+    const cell = (x) => (x
+      ? '<span class="pn">' + x.acc + '%</span><span class="pc">' + x.n + "</span>"
+      : '<span class="pn dim">–</span><span class="pc"></span>');
+    rows.push('<div class="phaserow"><span class="pl">' + PHASE_LABEL[ph] + "</span>" +
+      '<span class="pv">' + cell(w) + "</span>" +
+      '<span class="pv">' + cell(b) + "</span></div>");
+  }
+  if (!rows.length) { el.phases.classList.add("hidden"); return; }
+  el.phaseRows.innerHTML = rows.join("");
+  el.phases.classList.remove("hidden");
+}
+
 function renderSummary() {
   const R = state.review;
   el.summary.classList.remove("hidden");
@@ -956,6 +980,7 @@ function renderSummary() {
     '<div class="a"><b>' + R.accWhite + "%</b><span>" + esc(state.headers.White || "White") + "</span></div>" +
     '<div class="a"><b>' + R.accBlack + "%</b><span>" + esc(state.headers.Black || "Black") + "</span></div>";
   el.accStrip.classList.remove("hidden");
+  renderPhases();
   renderTimeNote();
   renderMotifNote();
   el.counts.innerHTML = "";
@@ -1414,6 +1439,17 @@ function renderLive(fen, lines) {
 // ---------- review ----------
 async function runReview() {
   if (!state.moves.length || !state.booted || state.reviewing) return;
+
+  // A review is a pure function of (game, depth, engine), so the same game at the same
+  // depth never has to be analysed twice. Re-opening a game used to re-run ~100 engine
+  // searches; now it comes back instantly.
+  const key = reviewKey({
+    startFen: state.startFen, moves: state.moves,
+    depth: state.reviewDepth, engine: state.engine.name,
+  });
+  const cached = await getCached(key);
+  if (cached) { applyReview(cached, true); return; }
+
   state.reviewing = true;
   clearTimeout(liveTimer); liveGen++;   // cancel any pending live search
   state.cancel = { cancelled: false };
@@ -1437,10 +1473,17 @@ async function runReview() {
   el.progress.classList.add("hidden");
   el.progressBar.style.transform = "scaleX(0)";
   if (!res) { restartLive(); return; }
+  // Only a COMPLETE review is worth remembering — a cancelled one returns null above.
+  putCached(key, res);
+  applyReview(res, false);
+}
+
+function applyReview(res, fromCache) {
   state.review = res;
   state.moves = res.moves;
   state.reviewed = true;
   window.__moves = res.moves;        // test hook: lets the suite read classifications + motifs
+  window.__fromCache = fromCache;    // test hook: did this review come back without the engine?
   renderSummary();
   renderMoveList();
   goto(state.ply);

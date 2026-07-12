@@ -1,8 +1,8 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=24";
-import { OPENINGS } from "../vendor/openings.js?v=24";
-import { explainMove } from "./motifs.js?v=24";
+import { Chess } from "../vendor/chess.js?v=25";
+import { OPENINGS } from "../vendor/openings.js?v=25";
+import { explainMove } from "./motifs.js?v=25";
 
 export const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -138,6 +138,33 @@ export function accuracy(losses) {
   return Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * avg) - 3.1669));
 }
 
+// Non-pawn material on the board, both sides: 62 at the start, 0 in a pawn endgame.
+// Kings and pawns are excluded because neither ever leaves.
+export function nonPawnMaterial(fen) {
+  let t = 0;
+  for (const ch of fen.split(" ")[0]) {
+    const p = ch.toLowerCase();
+    if (p === "n" || p === "b") t += 3;
+    else if (p === "r") t += 5;
+    else if (p === "q") t += 9;
+  }
+  return t;
+}
+
+// Which third of the game a move belongs to, for the accuracy breakdown.
+//
+// This is a PRESENTATION heuristic, not a claim about chess: it exists so the app can
+// say "you leak eval in the middlegame", and it is deliberately crude. The endgame is
+// decided by material rather than by move number, because a queen trade on move 14
+// really does produce an endgame. The opening runs as long as theory did — floored at
+// ply 12 so a game that leaves book on move 2 still has an opening to report, and
+// capped at ply 24 so a deeply-booked game doesn't swallow the whole middlegame.
+export const PHASE_ENDGAME_NPM = 20;   // of 62
+export function phaseOf(fenBefore, ply, openingEndPly) {
+  if (nonPawnMaterial(fenBefore) <= PHASE_ENDGAME_NPM) return "endgame";
+  return ply <= openingEndPly ? "opening" : "middlegame";
+}
+
 // moves: [{san, from, to, uci, color, fenBefore, fenAfter, moveNo}]
 // Returns { moves:[...with cpWhite, loss, cls, bestSan], accWhite, accBlack, counts }
 export async function reviewGame(engine, moves, startFen, opts = {}) {
@@ -169,7 +196,9 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
   const out = [];
   const counts = { w: {}, b: {} };
   for (const k of CLASS_ORDER) { counts.w[k] = 0; counts.b[k] = 0; }
-  const losses = { w: [], b: [] };
+  // One row per move, carrying the RAW (unrounded) loss, so accuracy overall and
+  // accuracy per phase are computed from the same numbers.
+  const rows = [];
 
   // --- how far did the game actually stay in the opening book? ---
   // Being "in book" is a property of the PATH, not of a single position. Asking
@@ -195,6 +224,9 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
   let opening = null;
   for (let i = named.length - 1; i >= 0; i--) if (named[i]) { opening = named[i]; break; }
 
+  // The opening phase runs as long as theory did, floored and capped — see phaseOf.
+  const openingEnd = Math.min(24, Math.max(bookEnd, 12));
+
   let inBook = true;    // cleared for good the moment the game leaves theory
 
   for (let i = 0; i < moves.length; i++) {
@@ -207,7 +239,6 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     const wpBefore = toMover(wpWhite(before.best));
     const wpAfter = toMover(wpWhite(after.best));
     const loss = Math.max(0, wpBefore - wpAfter);
-    losses[mv.color].push(loss);
 
     const bestUci = before.best ? before.best.move : before.bestmove;
 
@@ -272,6 +303,14 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
       ? (named[i] || true) : null;
     if (!bookEntry) inBook = false;
 
+    // Book moves are theory, not YOUR play. Counting a memorised move as a 0%-loss
+    // move of your own inflates accuracy — the more theory you happen to know, the
+    // better your "accuracy" looks without you having found anything over the board.
+    // They are excluded from every accuracy number below; they still show as Book in
+    // the counts. (Measured on real games: see docs/NOTES.md.)
+    const phase = phaseOf(mv.fenBefore, i + 1, openingEnd);
+    rows.push({ color: mv.color, loss, book: !!bookEntry, phase });
+
     let cls;
     if (bookEntry) cls = "book";
     else if (sac && loss < 3 && matBefore > 3 &&
@@ -292,6 +331,7 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
 
     out.push({
       ...mv,
+      phase,
       cpWhite: evalWhite(after.best),
       mateWhite: after.best ? after.best.mate : null,
       loss: Math.round(loss * 10) / 10,
@@ -314,10 +354,24 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     });
   }
 
+  // Accuracy, over the moves the player actually had to find (book excluded).
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const accOf = (color, phase) => {
+    const ls = rows.filter((r) => r.color === color && !r.book && (!phase || r.phase === phase))
+      .map((r) => r.loss);
+    return ls.length ? { acc: r1(accuracy(ls)), n: ls.length } : null;   // null = nothing to judge
+  };
+
+  const phases = {};
+  for (const ph of ["opening", "middlegame", "endgame"]) phases[ph] = { w: accOf("w", ph), b: accOf("b", ph) };
+
   return {
     moves: out,
-    accWhite: Math.round(accuracy(losses.w) * 10) / 10,
-    accBlack: Math.round(accuracy(losses.b) * 10) / 10,
+    accWhite: (accOf("w") || { acc: 100 }).acc,
+    accBlack: (accOf("b") || { acc: 100 }).acc,
+    // Accuracy split by game phase, so the report can say WHERE the play leaks.
+    // Each entry is { acc, n } or null when the side had no non-book move there.
+    phases,
     counts,
     opening,
   };
