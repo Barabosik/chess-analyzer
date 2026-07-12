@@ -1,9 +1,9 @@
-import { Chess } from "../vendor/chess.js?v=17";
-import { Engine } from "./engine.js?v=17";
-import { renderBoard } from "./board.js?v=17";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=17";
+import { Chess } from "../vendor/chess.js?v=18";
+import { Engine } from "./engine.js?v=18";
+import { renderBoard } from "./board.js?v=18";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=18";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=17";
+  from "./onlinegames.js?v=18";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -910,6 +910,37 @@ function animateMove(from, to) {
   requestAnimationFrame(() => { pc.style.transition = "transform .2s ease"; pc.style.transform = "translate(0,0)"; });
 }
 
+// The Chess.com-style celebration for a rare move. Fired once, when you step
+// FORWARD onto a brilliant or great move (like the move sound and animation).
+// The element is appended to the destination square, which the next drawBoard
+// rebuilds away — so navigating on naturally cancels an in-flight flourish and
+// at most one can ever exist.
+const FLOURISH = { brilliant: "Brilliant!", great: "Great!" };
+function flourish(mv) {
+  if (!FLOURISH[mv.cls] || !CLASSES[mv.cls]) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const sq = el.board.querySelector('[data-sq="' + mv.to + '"]');
+  if (!sq) return;
+  // Where the square sits on screen decides which way the label points, so it
+  // never spills off the board edge.
+  const file = mv.to.charCodeAt(0) - 97, rank = +mv.to[1];
+  const col = state.flip ? 7 - file : file;
+  const row = state.flip ? rank - 1 : 8 - rank;
+
+  const wrap = document.createElement("div");
+  wrap.className = "flourish";
+  wrap.style.setProperty("--fl-col", "var(" + CLASSES[mv.cls].v + ")");
+  const fill = document.createElement("div"); fill.className = "fl-fill";
+  const glyph = document.createElement("div"); glyph.className = "fl-glyph"; glyph.textContent = CLASSES[mv.cls].g;
+  const bubble = document.createElement("div"); bubble.className = "fl-bubble"; bubble.textContent = FLOURISH[mv.cls];
+  if (row === 0) bubble.classList.add("below");
+  if (col <= 1) bubble.classList.add("right");
+  else if (col >= 6) bubble.classList.add("left");
+  wrap.append(fill, glyph, bubble);
+  sq.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 1450);
+}
+
 function drawBoard() {
   const fen = currentFen();
   let lastMove = null, badge = null;
@@ -924,9 +955,10 @@ function drawBoard() {
     lastMove = { from: mv.from, to: mv.to };
     if (state.reviewed) badge = { square: mv.to, cls: mv.cls };
   }
+  const hlClass = badge ? badge.cls : null;
   const targets = state.selected ? legalTargets(fen, state.selected) : [];
   renderBoard(el.board, fen, {
-    flip: state.flip, lastMove, badge, selected: state.selected, targets, arrows,
+    flip: state.flip, lastMove, badge, hlClass, selected: state.selected, targets, arrows,
     onSquareClick: onSquareClick,
     onSquareDown: onSquareDown,
   });
@@ -950,6 +982,7 @@ function goto(ply) {
   drawBoard();
   if (state.ply === prev + 1 && state.ply > 0) {
     const m = state.moves[state.ply - 1]; animateMove(m.from, m.to); playMoveSound(m);
+    if (state.reviewed) flourish(m);
   } else if (state.ply === prev - 1 && prev > 0) {
     const m = state.moves[prev - 1]; animateMove(m.to, m.from); playMoveSound(m);
   }

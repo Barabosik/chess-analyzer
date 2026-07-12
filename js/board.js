@@ -1,12 +1,12 @@
 // Renders a chess position from a FEN into a grid of squares, with last-move
 // highlight, a classification badge, coordinates, and optional click-to-move.
-import { CLASSES } from "./review.js?v=17";
+import { CLASSES } from "./review.js?v=18";
 
 // cburnett SVG piece set (GPL). Path is relative to the HTML document base.
 const PIECES = "vendor/pieces/cburnett/";
 
 export function renderBoard(el, fen, opts = {}) {
-  const { flip = false, lastMove = null, badge = null, selected = null, targets = [], arrows = [],
+  const { flip = false, lastMove = null, badge = null, hlClass = null, selected = null, targets = [], arrows = [],
     onSquareClick = null, onSquareDown = null } = opts;
   const stm = fen.split(" ")[1] || "w";
   const rowsFen = fen.split(" ")[0].split("/");
@@ -33,7 +33,13 @@ export function renderBoard(el, fen, opts = {}) {
       const sq = document.createElement("div");
       sq.className = "sq " + (light ? "l" : "d");
       sq.dataset.sq = name;
-      if (lastMove && (name === lastMove.from || name === lastMove.to)) sq.classList.add("hl");
+      if (lastMove && (name === lastMove.from || name === lastMove.to)) {
+        sq.classList.add("hl");
+        if (hlClass && CLASSES[hlClass]) {
+          sq.classList.add("clshl");
+          sq.style.setProperty("--hl-col", "var(" + CLASSES[hlClass].v + ")");
+        }
+      }
       if (selected === name) sq.classList.add("sel");
 
       if (piece) {
