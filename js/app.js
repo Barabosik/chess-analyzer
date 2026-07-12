@@ -1,10 +1,10 @@
-import { Chess } from "../vendor/chess.js?v=23";
-import { Engine } from "./engine.js?v=23";
-import { renderBoard } from "./board.js?v=23";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=23";
-import { rollup } from "./motifs.js?v=23";
+import { Chess } from "../vendor/chess.js?v=24";
+import { Engine } from "./engine.js?v=24";
+import { renderBoard } from "./board.js?v=24";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=24";
+import { rollup } from "./motifs.js?v=24";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=23";
+  from "./onlinegames.js?v=24";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -29,6 +29,12 @@ const SAMPLE_PGN = `[Event "Live Chess"]
 39. bxc4 Qxc4 40. h5+ Kh7 41. Rf7+ Qxf7 42. Qxf7+ Bg7 43. a4 Rd1 44. Qg6+ Kh8
 45. Qe8+ Kh7 46. a5 Ra1 47. Qg6+ Kh8 48. a6 Be5 49. Qe8+ Kh7 50. Qxe5 Rxa6
 51. Qc7+ Kh6 52. Qf7 1-0`;
+
+// How deep the live panel searches before it stops. It is a ceiling, not a target:
+// the search converges here and the worker goes idle, instead of running forever and
+// holding a core at ~90% for as long as the tab is open. Deeper than the default
+// review depth (14), and reached in a couple of seconds. See docs/NOTES.md.
+const LIVE_DEPTH = 20;
 
 const state = {
   engine: null, booted: false,
@@ -1356,19 +1362,32 @@ let liveGen = 0;
 let liveTimer = null;
 function restartLive() {
   clearTimeout(liveTimer);
-  if (!state.booted || !state.live || state.reviewing) return;
+  if (!state.booted || !state.live || state.reviewing || document.hidden) return;
   const gen = ++liveGen;
   liveTimer = setTimeout(async () => {
-    if (gen !== liveGen || state.reviewing || !state.live) return;
+    if (gen !== liveGen || state.reviewing || !state.live || document.hidden) return;
     const fen = currentFen();
     await state.engine.stopLive();          // fully settle the previous search
     if (gen !== liveGen || state.reviewing) return; // superseded / review started while stopping
     await state.engine.live(fen, {
       multipv: state.liveLines,
+      depth: LIVE_DEPTH,
       onUpdate: (lines) => { if (gen === liveGen) renderLive(fen, lines); },
     });
   }, 90);
 }
+
+// A tab you are not looking at must not analyse. Even a depth-capped search restarts
+// on every navigation, and a background tab left open on a game was the other half of
+// the "laptop is hot" complaint. Picks straight back up when you return.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearTimeout(liveTimer); liveGen++;     // cancel anything pending
+    if (state.engine) state.engine.stopLive();
+  } else {
+    restartLive();
+  }
+});
 function renderLive(fen, lines) {
   if (!lines.length) return;
   const top = lines[0];

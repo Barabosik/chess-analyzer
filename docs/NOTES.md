@@ -60,6 +60,21 @@ fix looked complete and wasn't:
    A brilliancy **offers a piece**, is **sound** (not worse afterwards), and is
    **not played from an already-winning position**.
 
+**The live engine never stopped, and cooked the laptop.** The live panel ran
+`go infinite`, which searches until it is told to stop or reaches Stockfish's max
+depth (~245) — i.e. never. Nothing ever told it to stop: `restartLive` only halts the
+*previous* search in order to start the next one. So a core sat at ~90% for as long as
+the tab was open, on the last position you happened to look at, long after the review
+had finished — and in a background tab you weren't even looking at. Measured: the
+search settled at depth 20 and was still climbing (27) six seconds later.
+
+The live search is now **capped at `LIVE_DEPTH` (20)**, so it converges, emits
+`bestmove` and the worker sleeps; and it does not run at all while `document.hidden`.
+Capping by *depth* rather than by a timeout is deliberate — a time limit would make the
+panel's evaluation depend on how fast the machine is, which is the same
+non-reproducibility the hash-clearing below exists to prevent. `tests/engine-idle.test.mjs`
+pins both halves: depth stops climbing, and a hidden tab doesn't analyse.
+
 **Reviews were not reproducible.** The engine's transposition table carried state
 in from whatever was analysed before, so evaluations shifted a few centipawns and
 moves near a class boundary flipped (`Be6 ✓→•`, `Qh4 ★→•`). `reviewGame` now clears
@@ -121,6 +136,23 @@ Deferred on purpose: **pin/skewer** (its material usually resurfaces as a plain 
 piece a move later, so it's hard to attribute cleanly) and **non-check forks** (lower
 precision without a deeper search).
 
+## Interface decisions that were bugs in disguise
+
+**The action and its result must be in the same place.** The move's verdict, the
+engine's better move and the "Explain" button used to live in the *engine* panel on the
+right, while the readout for that same move, and the walk-through Explain opened, lived
+under the board on the left. Pressing a button on the right made the left-hand column
+change — two halves of one thought, split across the page. They are now one **coach
+card** (`.coach`) under the board: readout → verdict → "★ Bc4 was best · Explain" → the
+walk-through, which opens *in place of* the button that summons it. The right column is
+now purely engine and statistics.
+
+**A knight's arrow bends.** Drawn straight, g1→f3 cuts diagonally across squares the
+knight never visits and reads as a bishop move. It now turns a right angle — the long
+leg first, then square into the target — the way Chess.com and Lichess draw it. Arrow
+shafts are therefore `<polyline>`, not `<line>` (two points when straight, three when
+bent); `tests/arrows.test.mjs` counts and shapes them.
+
 ## Things that are still suspect (unmeasured)
 
 - **The accuracy formula's constants** (`103.1668 * exp(-0.04354 * avg) - 3.1669`)
@@ -144,13 +176,19 @@ precision without a deeper search).
 
 ## Gotchas
 
-- **An "infinite" search still ends on its own.** On a solved position (a forced
-  mate) `go infinite` races to Stockfish's max depth (~245 — that stray "245" in the
-  live panel) and emits a `bestmove` nobody asked for. The live handler ignored it, so
-  `_busy` stayed stuck `true` and the next `abort()` waited forever for a `bestmove`
-  that had already come — the panel froze, even back on the main game. The live handler
-  now clears `_busy` on `bestmove`, and `abort()` has a timeout fallback so the UI can
-  never hang on a lost `bestmove`. Pinned by `tests/engine-explore.test.mjs`.
+- **A live search ends on its own, so the live handler must expect a `bestmove` it
+  never asked for.** It now ends at `LIVE_DEPTH`; back when it was `go infinite` it
+  still ended on a solved position, by racing to max depth (~245 — that stray "245" in
+  the live panel). Either way a `bestmove` arrives unbidden. The handler used to ignore
+  it, so `_busy` stayed stuck `true`, the next `abort()` waited forever for a `bestmove`
+  that had already come, and the panel froze — even back on the main game. The live
+  handler clears `_busy` on `bestmove`, and `abort()` has a timeout fallback so the UI
+  can never hang on a lost one. Pinned by `tests/engine-explore.test.mjs`.
+- **Depth is the only honest "is the engine still working?" signal — and only while it
+  is climbing.** The panel keeps showing the last search's numbers after it finishes
+  (deliberately: no flicker when you tab back), so a stale `depth 20` proves nothing
+  about whether a search is running *now*. `engine-idle` tests the paused case by
+  loading a forced mate and asserting the eval does *not* turn into a mate score.
 - **The "stronger move" suggestion only shows on a real mistake** (`showBetter`).
   Without that gate it told you your best move was "excellent" and then pointed at a
   *worse* move labelled "best" — because the played-move eval and the pre-move best-line

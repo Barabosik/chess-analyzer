@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=23" />
+  <link rel="stylesheet" href="css/style.css?v=24" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -118,19 +118,31 @@
           <button id="returnGame" class="mini">Return to game</button>
         </div>
 
-        <!-- Guided walk-through of the engine's best line (the "Explain" button). -->
-        <div class="explainbar hidden" id="explainBar">
-          <button class="stepbtn" id="explainPrev" title="Back">‹</button>
-          <span class="explain-txt" id="explainTxt"></span>
-          <button class="stepbtn" id="explainNext" title="Forward">›</button>
-          <button id="explainDone" class="mini done">✓ Got it</button>
-        </div>
+        <!-- One move, one card. The verdict, the engine's better move, and the
+             walk-through of it are a single thought, so they sit together under the
+             board. They used to be split across the page — this readout here, the
+             verdict and the "Explain" button over in the engine panel — so pressing
+             Explain on the right made the left-hand column change. -->
+        <div class="coach">
+          <div class="readout">
+            <div class="cglyph" id="readGlyph">○</div>
+            <div class="rtxt">
+              <div class="rmove" id="readMove">Starting position</div>
+              <div class="rsub" id="readSub">Use ← → keys or click a move.</div>
+            </div>
+          </div>
 
-        <div class="readout">
-          <div class="cglyph" id="readGlyph">○</div>
-          <div class="rtxt">
-            <div class="rmove" id="readMove">Starting position</div>
-            <div class="rsub" id="readSub">Use ← → keys or click a move.</div>
+          <div class="assess hidden" id="assessBox">
+            <div class="assess-note" id="assessNote"></div>
+            <div class="assess-best" id="assessBest"></div>
+          </div>
+
+          <!-- Opens in place of the "Explain" button that summons it. -->
+          <div class="explainbar hidden" id="explainBar">
+            <button class="stepbtn" id="explainPrev" title="Back">‹</button>
+            <span class="explain-txt" id="explainTxt"></span>
+            <button class="stepbtn" id="explainNext" title="Forward">›</button>
+            <button id="explainDone" class="mini done">✓ Got it</button>
           </div>
         </div>
 
@@ -183,10 +195,6 @@
             <button class="toggle on" id="liveToggle">Engine: on</button>
             <div class="live-meta"><span class="mono" id="liveEval">–</span><span class="dim mono" id="liveDepth"></span></div>
           </div>
-          <div class="assess hidden" id="assessBox">
-            <div class="assess-note" id="assessNote"></div>
-            <div class="assess-best" id="assessBest"></div>
-          </div>
           <div class="livelines" id="liveLinesBox"></div>
           <div class="live-foot"><span id="engineName">Stockfish</span> · <select id="linesSel" class="tinysel">
             <option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option><option value="4">4 lines</option>
@@ -234,6 +242,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=23"></script>
+  <script type="module" src="js/app.js?v=24"></script>
 </body>
 </html>

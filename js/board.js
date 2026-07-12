@@ -1,6 +1,6 @@
 // Renders a chess position from a FEN into a grid of squares, with last-move
 // highlight, a classification badge, coordinates, and optional click-to-move.
-import { CLASSES } from "./review.js?v=23";
+import { CLASSES } from "./review.js?v=24";
 
 // cburnett SVG piece set (GPL). Path is relative to the HTML document base.
 const PIECES = "vendor/pieces/cburnett/";
@@ -95,17 +95,33 @@ export function renderBoard(el, fen, opts = {}) {
       const f = sqCR(a.from, flip), t = sqCR(a.to, flip);
       const x1 = f.c + 0.5, y1 = f.r + 0.5, x2 = t.c + 0.5, y2 = t.r + 0.5;
       const col = a.color || "#f7b34c";
-      const ang = Math.atan2(y2 - y1, x2 - x1);
       const head = 0.4, halfW = 0.18, shaft = 0.15;
-      const sx = x1 + Math.cos(ang) * 0.34, sy = y1 + Math.sin(ang) * 0.34;
+
+      // A knight's arrow turns a right angle, the way Chess.com and Lichess draw it:
+      // the long leg first, then the short one into the target. A straight line from
+      // g1 to f3 cuts diagonally across squares the knight never visits and reads as
+      // a bishop move; the elbow reads as a knight at a glance.
+      const dc = t.c - f.c, dr = t.r - f.r;
+      const isKnight = Math.abs(dc) + Math.abs(dr) === 3 && dc !== 0 && dr !== 0;
+      const elbow = !isKnight ? null
+        : Math.abs(dr) === 2 ? { x: x1, y: y2 }    // two along the file, then across
+                             : { x: x2, y: y1 };   // two along the rank, then up or down
+
+      // The head always sits on the final leg, so it points the way the arrow arrives.
+      const hx = elbow ? elbow.x : x1, hy = elbow ? elbow.y : y1;
+      const ang = Math.atan2(y2 - hy, x2 - hx);
       const tipx = x2 - Math.cos(ang) * 0.08, tipy = y2 - Math.sin(ang) * 0.08;
       const bx = tipx - Math.cos(ang) * head, by = tipy - Math.sin(ang) * head;
-      const line = document.createElementNS(NS, "line");
-      line.setAttribute("x1", x1); line.setAttribute("y1", y1);
-      line.setAttribute("x2", bx); line.setAttribute("y2", by);
-      line.setAttribute("stroke", col); line.setAttribute("stroke-width", shaft);
-      line.setAttribute("stroke-linecap", "round"); line.setAttribute("opacity", "0.9");
-      svg.appendChild(line);
+
+      const shaftPts = (elbow ? [[x1, y1], [elbow.x, elbow.y]] : [[x1, y1]]).concat([[bx, by]]);
+      const path = document.createElementNS(NS, "polyline");
+      path.setAttribute("points", shaftPts.map((p) => p[0] + "," + p[1]).join(" "));
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", col); path.setAttribute("stroke-width", shaft);
+      path.setAttribute("stroke-linecap", "round"); path.setAttribute("stroke-linejoin", "round");
+      path.setAttribute("opacity", "0.9");
+      svg.appendChild(path);
+
       const poly = document.createElementNS(NS, "polygon");
       const lx = bx + Math.cos(ang + Math.PI / 2) * halfW, ly = by + Math.sin(ang + Math.PI / 2) * halfW;
       const rx = bx - Math.cos(ang + Math.PI / 2) * halfW, ry = by - Math.sin(ang + Math.PI / 2) * halfW;

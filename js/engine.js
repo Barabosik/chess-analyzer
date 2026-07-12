@@ -115,17 +115,27 @@ export class Engine {
     });
   }
 
-  // Continuous ("infinite") analysis for the live panel. Streams via onUpdate(lines).
-  async live(fen, { multipv = 3, onUpdate } = {}) {
+  // Streaming analysis for the live panel, to a depth ceiling. Streams via onUpdate(lines).
+  //
+  // The ceiling is the point. This used to be `go infinite`, which searches until
+  // it is told to stop or reaches Stockfish's max depth (~245) — i.e. never — so the
+  // worker held a core at ~90% for as long as the page was open, long after the
+  // review had finished, and heated the machine while you just sat reading a
+  // finished game. A depth cap makes the search converge and stop on its own.
+  //
+  // Capping by depth rather than by a timeout also keeps the panel reproducible:
+  // the same position always gives the same evaluation, on a fast machine or a slow
+  // one. Same reason `reviewGame` clears the hash — see docs/NOTES.md.
+  async live(fen, { multipv = 3, depth = 20, onUpdate } = {}) {
     await this.abort();
     this._busy = true;
     this.setMultiPV(multipv);
     const stm = fen.split(" ")[1] || "w";
     const lines = {};
     this._liveFn = (l) => {
-      // An "infinite" search still ends on its own at max depth on a solved
-      // position. If we don't clear _busy here, the next abort() waits forever
-      // for a bestmove that already came and went, and the engine locks up.
+      // The search ends on its own now — at the cap, or earlier on a solved position.
+      // If we don't clear _busy here, the next abort() waits forever for a bestmove
+      // that already came and went, and the engine locks up.
       if (l.startsWith("bestmove")) { this._busy = false; return; }
       if (l.startsWith("info") && l.includes(" pv ") && l.includes(" score ")) {
         const i = parseInfo(l, stm);
@@ -137,7 +147,7 @@ export class Engine {
     };
     this.on(this._liveFn);
     this.post("position fen " + fen);
-    this.post("go infinite");
+    this.post("go depth " + depth);
   }
 
   stopLive() { return this.abort(); }

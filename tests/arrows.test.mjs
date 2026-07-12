@@ -23,8 +23,13 @@ async function rightDraw(from, to, { shift = false } = {}) {
   if (shift) await page.keyboard.up("Shift");
   await page.waitForTimeout(50);
 }
-const arrows = () => page.locator("#board svg line").count();     // one <line> per arrow
-const marks = () => page.locator("#board svg circle").count();    // one <circle> per square mark
+const arrows = () => page.locator("#board svg polyline").count();  // one <polyline> per arrow shaft
+const marks = () => page.locator("#board svg circle").count();     // one <circle> per square mark
+
+// The shaft's points, as [[x,y], …]. A straight arrow has two; a knight's has three,
+// the middle one being the corner it turns.
+const shaft = async () => (await page.locator("#board svg polyline").first().getAttribute("points"))
+  .trim().split(/\s+/).map((p) => p.split(",").map(Number));
 
 // draw an arrow
 await rightDraw("e2", "e4");
@@ -51,8 +56,39 @@ t.ok("a left click clears all annotations", (await arrows()) === 0 && (await mar
 
 // a modifier picks a different colour (shift = red)
 await rightDraw("b1", "c3", { shift: true });
-const stroke = await page.locator("#board svg line").first().getAttribute("stroke");
+const stroke = await page.locator("#board svg polyline").first().getAttribute("stroke");
 t.ok("shift draws a red arrow", stroke === "#a02c2c", "stroke=" + stroke);
+
+// ---- knight arrows bend, like Chess.com ----
+// A straight g1-f3 line cuts across squares the knight never visits and reads as a
+// bishop move. It must turn a right angle: the long leg first, then into the target.
+await page.mouse.click((await center("a3")).x, (await center("a3")).y);   // clear
+await rightDraw("e2", "e4");
+const straight = await shaft();
+t.ok("an ordinary move draws a straight arrow", straight.length === 2,
+  "points=" + JSON.stringify(straight));
+
+await page.mouse.click((await center("a3")).x, (await center("a3")).y);   // clear
+await rightDraw("g1", "f3");
+const knight = await shaft();
+const [start, corner, end] = knight;
+t.ok("a knight's move draws an elbow, not a straight line", knight.length === 3,
+  "points=" + JSON.stringify(knight));
+// The corner turns a true right angle: it leaves the origin along one axis and
+// arrives at the target along the other. g1-f3 goes g1->g3, then across to f3.
+t.ok("the elbow travels the long leg first, then turns square into the target",
+  knight.length === 3 && corner[0] === start[0] && corner[1] === end[1] &&
+  Math.abs(corner[1] - start[1]) === 2,
+  "start=" + start + " corner=" + corner + " end=" + end);
+
+// The same move seen from Black's side must still bend (the elbow is computed after
+// the flip, so a mirrored board must not straighten it out).
+await page.click("#bFlip");
+await page.mouse.click((await center("a3")).x, (await center("a3")).y);
+await rightDraw("g1", "f3");
+const flipped = await shaft();
+t.ok("the elbow survives a board flip", flipped.length === 3, "points=" + JSON.stringify(flipped));
+await page.click("#bFlip");   // back to White's view; the arrow stays up for the next check
 
 // navigating away clears annotations too
 await page.click("#bNext");
