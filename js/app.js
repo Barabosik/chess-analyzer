@@ -1,9 +1,9 @@
-import { Chess } from "../vendor/chess.js?v=10";
-import { Engine } from "./engine.js?v=10";
-import { renderBoard } from "./board.js?v=10";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=10";
+import { Chess } from "../vendor/chess.js?v=13";
+import { Engine } from "./engine.js?v=13";
+import { renderBoard } from "./board.js?v=13";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=13";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=10";
+  from "./onlinegames.js?v=13";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 

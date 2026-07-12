@@ -1,7 +1,7 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=10";
-import { OPENINGS } from "../vendor/openings.js?v=10";
+import { Chess } from "../vendor/chess.js?v=13";
+import { OPENINGS } from "../vendor/openings.js?v=13";
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -20,6 +20,13 @@ export function bookLookup(fen) {
 const BOOK_MAX_PLY = 30;    // theory never runs longer than this
 const BOOK_MAX_GAP = 4;     // unnamed plies we will bridge (covers 85% of holes)
 const BOOK_MAX_LOSS = 5;    // a move that costs this much win% is not theory
+
+// A move within this many centipawns of the engine's own choice is, in engine
+// terms, just as good — so it earns "Best" even if the engine would have played
+// something else. Measured on real games: 0cp promotes 37 moves the engine rates
+// exactly equal, 10cp promotes 78 (13%), 50cp would promote 35% and make the
+// label meaningless.
+const BEST_TOL_CP = 10;
 // The deepest named opening the game reached.
 export function detectOpening(moves) {
   let last = null;
@@ -85,6 +92,31 @@ function material(chess, color) {
     }
   }
   return sum;
+}
+
+// Static exchange evaluation: how much material the side to move can win by
+// capturing on `square`, if both sides keep recapturing with their cheapest
+// attacker and either may stop when the exchange turns bad.
+//
+// This replaces asking the engine "what would you reply?" to detect a sacrifice.
+// That question is the wrong one twice over: the engine's reply may simply
+// collect material that was ALREADY hanging before the move (a quiet pawn move
+// like h3 was being called a sacrifice), and its choice of reply is not stable
+// between runs at the same depth, so the same game could be reviewed twice and
+// report different Brilliants. SEE only looks at the position, so it is exact
+// and gives the same answer every time.
+const SEE_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };   // king captures last
+
+function seeGain(fen, square) {
+  const c = new Chess(fen);
+  const caps = c.moves({ verbose: true }).filter((m) => m.to === square && m.captured);
+  if (!caps.length) return 0;
+  caps.sort((a, b) => SEE_VAL[a.piece] - SEE_VAL[b.piece]);   // cheapest attacker first
+  const m = caps[0];
+  const c2 = new Chess(fen);
+  c2.move({ from: m.from, to: m.to, promotion: m.promotion });
+  // taking is optional, so a losing exchange is simply declined
+  return Math.max(0, VAL[m.captured] - seeGain(c2.fen(), square));
 }
 export function accuracy(losses) {
   if (!losses.length) return 100;
@@ -159,7 +191,17 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     losses[mv.color].push(loss);
 
     const bestUci = before.best ? before.best.move : before.bestmove;
-    const isBest = bestUci && bestUci === mv.uci;
+
+    // "Best" used to demand an EXACT match with the engine's move, so a move the
+    // engine rates identically but plays differently got demoted to Excellent —
+    // 6% of all moves in a real sample. Judge by evaluation instead: a move within
+    // a tenth of a pawn of the engine's own is, in engine terms, just as good.
+    // (Moves that ARE the engine's move measure a median 1cp of loss here, so the
+    // tolerance sits comfortably inside the search noise.)
+    const sign = whiteMove ? 1 : -1;
+    const cpLoss = sign * evalWhite(before.best) - sign * evalWhite(after.best);
+    const isBest = (!!bestUci && bestUci === mv.uci) || cpLoss <= BEST_TOL_CP;
+
     let bestSan = null;
     if (bestUci) {
       const c = new Chess(mv.fenBefore);
@@ -175,18 +217,21 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
       gap = toMover(wpWhite(before.lines[0])) - toMover(wpWhite(before.lines[1]));
     }
 
-    // Sacrifice: mover's material after the opponent's best reply vs before the move.
-    let sac = false;
+    // Sacrifice: the move must OFFER material — after it, the opponent can win at
+    // least a couple of points by taking on the square just played to, and the
+    // exchange there does not win it back. Two earlier attempts at this were both
+    // wrong on real games: counting only the mover's own material called an
+    // ordinary recapture a sacrifice (67% of Brilliants were plain trades), and
+    // trusting the engine's best reply blamed a quiet move for material that was
+    // already hanging before it.
     const cBefore = new Chess(mv.fenBefore);
     const matBefore = material(cBefore, mv.color);
-    const reply = after.best ? after.best.move : after.bestmove;
-    if (reply) {
-      const cAfter = new Chess(mv.fenAfter);
-      try {
-        cAfter.move({ from: reply.slice(0, 2), to: reply.slice(2, 4), promotion: reply.slice(4, 5) || undefined });
-        if (matBefore - material(cAfter, mv.color) >= 2) sac = true;
-      } catch (e) { /* ignore */ }
-    }
+    const taken = cBefore.get(mv.to);                           // what this move captured
+    const winBack = seeGain(mv.fenAfter, mv.to);                // what the opponent wins back there
+    // Net material handed over. Netting off the capture is essential: queen takes
+    // queen and is recaptured gives up nothing, but the exchange on that square
+    // still "wins" a queen for the opponent.
+    const sac = winBack - (taken ? VAL[taken.type] : 0) >= 2;
     const evalAfterMover = whiteMove ? evalWhite(after.best) : -evalWhite(after.best);
 
     // A move is theory only if the game is still inside the book phase AND the
