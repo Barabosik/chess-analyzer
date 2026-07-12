@@ -4,6 +4,7 @@
 // two guarantees the spec calls mandatory: determinism, and the "already hanging"
 // guard that must NOT blame a quiet move for a pre-existing hang.
 import { suite, open, loadPgn, review } from "./lib/harness.mjs";
+import { detectFork } from "../js/motifs.js?v=20";
 
 const t = suite("motifs");
 const { browser, page, errors } = await open();
@@ -65,6 +66,15 @@ await review(page, "12");
   t.ok("a quiet move is not blamed for a pre-existing hang",
     !h6 || h6.kind !== "hung-piece", JSON.stringify(h6));
 }
+
+// --- fork detector: a "fork" the forked piece can just capture is not a fork.
+// The reported Qf7+?? case (met by Qxf7) must NOT be called a fork; a genuine
+// knight check-fork must still fire.
+t.ok("a queen check the enemy queen captures back is not a fork",
+  detectFork("5Q2/8/6k1/8/2qb3P/5RP1/P1P2PK1/4r3 w - - 0 40", "b") === null,
+  JSON.stringify(detectFork("5Q2/8/6k1/8/2qb3P/5RP1/P1P2PK1/4r3 w - - 0 40", "b")));
+t.ok("a real knight check-fork still fires",
+  (detectFork("r3k3/8/8/1N6/8/8/8/4K3 w - - 0 1", "b") || {}).victim === "r", "Nc7+ should fork Ke8 + Ra8");
 
 t.ok("no uncaught page errors", errors.length === 0, errors.slice(0, 3).join(" || ") || "clean");
 

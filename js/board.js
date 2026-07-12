@@ -1,13 +1,13 @@
 // Renders a chess position from a FEN into a grid of squares, with last-move
 // highlight, a classification badge, coordinates, and optional click-to-move.
-import { CLASSES } from "./review.js?v=19";
+import { CLASSES } from "./review.js?v=20";
 
 // cburnett SVG piece set (GPL). Path is relative to the HTML document base.
 const PIECES = "vendor/pieces/cburnett/";
 
 export function renderBoard(el, fen, opts = {}) {
   const { flip = false, lastMove = null, badge = null, hlClass = null, selected = null, targets = [], arrows = [],
-    onSquareClick = null, onSquareDown = null } = opts;
+    marks = [], onSquareClick = null, onSquareDown = null } = opts;
   const stm = fen.split(" ")[1] || "w";
   const rowsFen = fen.split(" ")[0].split("/");
   const grid = rowsFen.map((fr) => {
@@ -77,12 +77,20 @@ export function renderBoard(el, fen, opts = {}) {
     }
   }
 
-  // Move arrows (drawn in board grid units; board is square so no distortion).
-  if (arrows.length) {
+  // Move arrows and square marks (drawn in board grid units; board is square).
+  if (arrows.length || marks.length) {
     const NS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(NS, "svg");
     svg.setAttribute("class", "arrows");
     svg.setAttribute("viewBox", "0 0 8 8");
+    for (const mk of marks) {
+      const s = sqCR(mk.square, flip);
+      const ring = document.createElementNS(NS, "circle");
+      ring.setAttribute("cx", s.c + 0.5); ring.setAttribute("cy", s.r + 0.5); ring.setAttribute("r", 0.46);
+      ring.setAttribute("fill", "none"); ring.setAttribute("stroke", mk.color || "#15781b");
+      ring.setAttribute("stroke-width", 0.07); ring.setAttribute("opacity", "0.9");
+      svg.appendChild(ring);
+    }
     for (const a of arrows) {
       const f = sqCR(a.from, flip), t = sqCR(a.to, flip);
       const x1 = f.c + 0.5, y1 = f.r + 0.5, x2 = t.c + 0.5, y2 = t.r + 0.5;

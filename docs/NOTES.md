@@ -103,8 +103,11 @@ are therefore exact. Its *choice of move* is not.
   on inaccuracies; missed-material fires on mistakes/blunders only.
 - **You didn't miss what you took.** Missed-material is silent if the played move was
   itself a capture.
-- **Fork must be real.** Only check-forks, and only when the checking piece can't just be
-  taken (`seeGain` on it) and the second target is genuinely winnable.
+- **Fork must be real.** Only check-forks, and only when the checking piece can't be
+  captured by an equal-or-cheaper piece (the check is then parried for free), and the
+  second target is genuinely winnable. The fake fork this kills: a queen check on a
+  diagonal that also "hits" the enemy queen is just a queen trade — the queen captures
+  back (`Qf7+??` met by `Qxf7`). `detectFork` is exported and pinned in the test.
 
 **Measured** on 10 real games (84 inaccuracy/mistake/blunder moves, depth 12): 24 got a
 motif (**29% coverage** — the rest are positional, correctly silent), and every one of

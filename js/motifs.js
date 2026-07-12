@@ -6,8 +6,8 @@
 // (seeGain) plus board geometry -- exact, and identical on every run. The
 // engine's SCORE is still used, to know a mistake happened and whether mate is
 // forced; its move is not.
-import { Chess, SQUARES } from "../vendor/chess.js?v=19";
-import { seeGain, VAL } from "./review.js?v=19";
+import { Chess, SQUARES } from "../vendor/chess.js?v=20";
+import { seeGain, VAL } from "./review.js?v=20";
 
 const NAME = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
 const BLAME = { inaccuracy: 1, mistake: 1, blunder: 1 };
@@ -100,7 +100,7 @@ function uciToSan(fen, uci) {
 // undefended, or worth more than the attacker so even a trade wins it) -- and
 // the checking piece can't simply be captured. Requiring a check keeps this
 // precise: the king must move, so the second piece falls.
-function detectFork(fenAfter, moverColor) {
+export function detectFork(fenAfter, moverColor) {
   const opp = moverColor === "w" ? "b" : "w";
   let c;
   try { c = new Chess(fenAfter); } catch (e) { return null; }
@@ -111,7 +111,12 @@ function detectFork(fenAfter, moverColor) {
     c2.move({ from: r.from, to: r.to, promotion: r.promotion });
     if (!c2.isCheck()) continue;
     const attackerVal = VAL[c2.get(r.to).type];
-    if (seeGain(c2.fen(), r.to) >= attackerVal) continue;   // mover can just take the checker -> no fork
+    // If the mover can just capture the checker with an equal-or-cheaper piece,
+    // the check is parried at no loss and it isn't a fork. A queen check on a
+    // diagonal that also "hits" the enemy queen is really a queen trade -- the
+    // queen captures back (Qf7+?? met by Qxf7). This is the commonest fake fork.
+    const takers = c2.moves({ verbose: true }).filter((m) => m.to === r.to && m.captured);
+    if (takers.some((m) => VAL[m.piece] <= attackerVal)) continue;
     let bestVictim = null;
     for (const sq of SQUARES) {
       const pc = c2.get(sq);

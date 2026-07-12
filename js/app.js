@@ -1,10 +1,10 @@
-import { Chess } from "../vendor/chess.js?v=19";
-import { Engine } from "./engine.js?v=19";
-import { renderBoard } from "./board.js?v=19";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=19";
-import { rollup } from "./motifs.js?v=19";
+import { Chess } from "../vendor/chess.js?v=20";
+import { Engine } from "./engine.js?v=20";
+import { renderBoard } from "./board.js?v=20";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=20";
+import { rollup } from "./motifs.js?v=20";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=19";
+  from "./onlinegames.js?v=20";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -44,6 +44,10 @@ const state = {
   // share link point at the game instead of carrying its whole PGN.
   source: null,
   hasClocks: false,
+  // Right-click annotations (like Chess.com): arrows and single-square marks the
+  // user draws. Cleared on any left interaction or navigation. arrowPreview is
+  // the transient one that follows the cursor mid-drag.
+  userArrows: [], userMarks: [], arrowPreview: null,
 };
 try {
   state.sound = localStorage.getItem("ca_sound") !== "0";
@@ -977,8 +981,11 @@ function drawBoard() {
   }
   const hlClass = badge ? badge.cls : null;
   const targets = state.selected ? legalTargets(fen, state.selected) : [];
+  for (const a of state.userArrows) arrows.push(a);          // user annotations on top
+  if (state.arrowPreview) arrows.push(state.arrowPreview);   // the one being dragged now
   renderBoard(el.board, fen, {
     flip: state.flip, lastMove, badge, hlClass, selected: state.selected, targets, arrows,
+    marks: state.userMarks,
     onSquareClick: onSquareClick,
     onSquareDown: onSquareDown,
   });
@@ -996,6 +1003,7 @@ function legalTargets(fen, sq) {
 // ---------- navigation ----------
 function goto(ply) {
   const prev = state.ply;
+  clearUserDrawings();          // annotations belong to the position you drew them on
   playToken++;
   state.ply = Math.max(0, Math.min(state.moves.length, ply));
   state.selected = null;
@@ -1060,6 +1068,7 @@ let lastDropAt = 0;   // swallows the click a completed drag leaves behind
 function onSquareClick(name) {
   if (state.reviewing) return;
   if (Date.now() - lastDropAt < 250) return;
+  clearUserDrawings();               // any left click wipes the drawn annotations
   playToken++;
   const fen = currentFen();
   if (state.selected && state.selected !== name && tryPlayMove(state.selected, name, true)) return;
@@ -1096,8 +1105,10 @@ function carry(x, y) {
 }
 
 function onSquareDown(name, ev) {
+  if (ev.button === 2) { startArrow(name, ev); return; }  // right button = draw an arrow / mark
   if (ev.button > 0 || state.reviewing || drag) return;   // left button / primary touch only
   if (!pieceCanMove(currentFen(), name)) return;          // not your piece: leave it to click
+  clearUserDrawings();                                    // starting a move wipes annotations
 
   playToken++;
   state.selected = name;
@@ -1149,6 +1160,70 @@ function onDragEnd(ev) {
     state.selected = null;           // dropped somewhere illegal: put it back
     drawBoard();
   }
+}
+
+// ---------- right-click annotations (arrows + square marks) ----------
+// Right-drag draws an arrow; a right-click without travel marks a square.
+// Drawing the same shape again toggles it off; a modifier key picks the colour
+// (Chess.com / Lichess convention). Any left click or navigation clears them.
+let arrowDraw = null;
+const ARROW_COLORS = { none: "#15781b", shift: "#a02c2c", alt: "#1f6fb0", ctrl: "#e0a53f" };
+function arrowColor(ev) {
+  if (ev.shiftKey) return ARROW_COLORS.shift;
+  if (ev.altKey) return ARROW_COLORS.alt;
+  if (ev.ctrlKey || ev.metaKey) return ARROW_COLORS.ctrl;
+  return ARROW_COLORS.none;
+}
+function clearUserDrawings() {
+  if (!state.userArrows.length && !state.userMarks.length && !state.arrowPreview) return false;
+  state.userArrows = []; state.userMarks = []; state.arrowPreview = null;
+  return true;
+}
+function startArrow(name, ev) {
+  ev.preventDefault();
+  arrowDraw = { from: name, previewTo: null };
+  window.addEventListener("pointermove", onArrowMove);
+  window.addEventListener("pointerup", onArrowUp);
+  window.addEventListener("pointercancel", onArrowCancel);
+}
+function onArrowMove(ev) {
+  if (!arrowDraw) return;
+  const to = squareAt(ev.clientX, ev.clientY);
+  if (to === arrowDraw.previewTo) return;               // only redraw when the target square changes
+  arrowDraw.previewTo = to;
+  state.arrowPreview = to && to !== arrowDraw.from ? { from: arrowDraw.from, to, color: arrowColor(ev) } : null;
+  drawBoard();
+}
+function onArrowUp(ev) {
+  endArrowListeners();
+  const from = arrowDraw && arrowDraw.from;
+  arrowDraw = null;
+  state.arrowPreview = null;
+  if (from) {
+    const to = squareAt(ev.clientX, ev.clientY);
+    const color = arrowColor(ev);
+    if (to === from) toggleMark(from, color);
+    else if (to) toggleArrow(from, to, color);
+  }
+  drawBoard();
+}
+function onArrowCancel() { endArrowListeners(); arrowDraw = null; state.arrowPreview = null; drawBoard(); }
+function endArrowListeners() {
+  window.removeEventListener("pointermove", onArrowMove);
+  window.removeEventListener("pointerup", onArrowUp);
+  window.removeEventListener("pointercancel", onArrowCancel);
+}
+function toggleArrow(from, to, color) {
+  const i = state.userArrows.findIndex((a) => a.from === from && a.to === to);
+  if (i < 0) state.userArrows.push({ from, to, color });
+  else if (state.userArrows[i].color === color) state.userArrows.splice(i, 1);   // same again -> remove
+  else state.userArrows[i].color = color;                                        // different colour -> recolour
+}
+function toggleMark(square, color) {
+  const i = state.userMarks.findIndex((m) => m.square === square);
+  if (i < 0) state.userMarks.push({ square, color });
+  else if (state.userMarks[i].color === color) state.userMarks.splice(i, 1);
+  else state.userMarks[i].color = color;
 }
 
 function renderExploreLine() {
@@ -1263,6 +1338,8 @@ function bind() {
   $("bNext").onclick = () => { state.explore = null; el.exploreBar.classList.add("hidden"); goto(state.ply + 1); };
   $("bEnd").onclick = () => { state.explore = null; el.exploreBar.classList.add("hidden"); goto(state.moves.length); };
   $("bFlip").onclick = () => { state.flip = !state.flip; drawBoard(); };
+  // Right-clicking the board draws arrows instead of opening the context menu.
+  el.board.addEventListener("contextmenu", (e) => e.preventDefault());
   $("returnGame").onclick = returnToGame;
 
   el.reviewBtn.onclick = () => { state.reviewing ? (state.cancel.cancelled = true) : runReview(); };
