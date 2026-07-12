@@ -1,0 +1,115 @@
+# Engineering notes
+
+Why the analysis code is the way it is, and what's next. Read this before touching
+`js/review.js` — most of its constants are the answer to a bug, not a guess.
+
+## The rule that produced everything below
+
+**Measure before changing, and again after.** Every heuristic in `review.js` was
+wrong in a way that looked fine until it was measured against real games. The
+numbers in the comments are real; re-derive them if you change the code.
+
+`tests/classifier.test.mjs` asserts one bug per check. All of them shipped.
+
+## Bugs that shipped, and what they taught
+
+**Book was a property of the position, not the path.** `bookLookup` only asked "is
+this position in the openings book?", so a game that left theory long ago could
+transpose onto a named position and get an isolated "Book" move stranded among
+non-book ones — impossible in a real game. It happened in **42% of 947 games**.
+
+The naive fix (stop at the first unnamed position) is also wrong: the book names
+~3,800 specific positions, not every position in a line — an unbroken chain of
+named positions only reaches **ply 14** — so short holes appear *while you are
+still in theory*. **64% of holes are exactly 2 plies.** Hence: book is an unbroken
+prefix, short holes (≤ 4 plies) are bridged, and a move that costs ≥5% win
+probability ends the book phase (otherwise a blunder landing on a named position
+would be labelled Book, hiding it from the counts).
+
+**Checkmate scored as a dead draw.** A mated position has no legal moves, so
+Stockfish answers `bestmove (none)` with no pv, `best` came back `null`, and
+`wpWhite(null)` returned 50. The mating move therefore looked like it had thrown
+the game away: **Scholar's mate scored White at 51% accuracy.** Terminal positions
+are now decided by the rules, not the engine. Stalemate keeps scoring 0.00 —
+which the null produced by accident, and which is correct.
+
+**"Best move" demanded an exact engine match.** A move the engine rates *exactly
+equal* to its own was demoted to Excellent — 37 moves, 6% of all moves. Now judged
+by evaluation with a 10cp tolerance. Moves that ARE the engine's move measure a
+median 1cp of loss, so 10cp sits inside the search noise; 50cp would promote 35%
+of all moves and make the label meaningless.
+
+**"Brilliant" was wrong three separate times.** Worth spelling out, because each
+fix looked complete and wasn't:
+
+1. It compared only the **mover's own** material before and after, so "I take, you
+   recapture" counted as a sacrifice. **8 of 12 Brilliants (67%) were plain trades.**
+2. Trusting the engine's **best reply** blamed a move for material that was already
+   hanging: the quiet pawn move `h3` was Brilliant with the material balance
+   unchanged at 7 → 7. And the reply is not stable — the same 10 games gave **8
+   Brilliants on one run and 5 on the next**, because the hash table carries over.
+   Sacrifice is now decided by **static exchange evaluation**, which reads only the
+   position: exact, and identical every run.
+3. The remaining conditions made a real brilliancy unreachable. Requiring 2+ points
+   of net material rejects a **bishop for two pawns** (nets 1) — the commonest
+   brilliancy there is. And requiring the mover to be **+0.80 up afterwards**
+   rejects every sound sacrifice that merely holds the balance. Across 6 real games
+   that rule found exactly one Brilliant, and it was one played from an
+   already-winning +4.88 — the single case that should *not* count.
+
+   A brilliancy **offers a piece**, is **sound** (not worse afterwards), and is
+   **not played from an already-winning position**.
+
+**Reviews were not reproducible.** The engine's transposition table carried state
+in from whatever was analysed before, so evaluations shifted a few centipawns and
+moves near a class boundary flipped (`Be6 ✓→•`, `Qh4 ★→•`). `reviewGame` now clears
+the hash first. Caught by the test suite on the day it was written.
+
+## Removed: estimated rating
+
+It mapped accuracy to Elo with `6.8 * exp(0.0575 * acc)`. Checked against **64 real
+games spanning 280–3414 Elo** (every imported PGN carries the players' true
+ratings): **mean absolute error 1072 Elo.** Two players 2500 points apart produced
+the same accuracy (88.4% → real 322; 89.3% → real 2826), and the curve tops out near
+2100, so every strong player was under-rated by ~1700.
+
+It is **not fixable by re-fitting**: accuracy does correlate with strength
+(r = 0.63), but the best possible mapping still misses by ~850 Elo, because a quiet
+game inflates accuracy and a sharp one deflates it whoever is playing. Single-game
+accuracy cannot pin down a rating. Don't add it back.
+
+## Things that are still suspect (unmeasured)
+
+- **The accuracy formula's constants** (`103.1668 * exp(-0.04354 * avg) - 3.1669`)
+  are inherited and unverified. Same treatment: measure before trusting.
+- **Book moves count toward accuracy**, which inflates it. Arguably they shouldn't.
+- **`great`** (critical only-move) uses `gap >= 12` win% — never measured.
+
+## What's next, in order
+
+1. **Retry mode.** At each mistake, hide the engine's move and make the player find
+   it on the board (drag already works). Everything needed exists: classified moves,
+   `previewBest`, click/drag-to-move. The one feature most likely to improve play.
+2. **Report card across games + review caching.** 30 games arrive in one request,
+   each with result, opening *and* clocks. Aggregate: which openings you lose in,
+   which phase leaks eval, whether accuracy collapses in time trouble. Needs caching
+   (re-opening a game currently re-runs ~100 engine searches).
+3. **Mark where each side left theory** — now trustworthy, and one line of insight:
+   "you left book on move 5, your opponent on move 9."
+4. **Lichess opening explorer** (free, CORS-open, no auth): "at your rating, 62% play
+   this here." The one thing the app can't currently tell you.
+
+## Gotchas
+
+- **Bump `?v=N` on every JS/CSS change** (`sed -i '' 's/?v=N/?v=N+1/g' js/*.js index.html`).
+  Forgetting it once cost an hour: a stale cached module produced a bug that did not
+  exist in the code, and the error message pointed somewhere else entirely.
+- **Chess.com has no public single-game endpoint.** Its internal `callback/live/game/{id}`
+  sends no CORS header (verified from a real browser origin), so games can only be
+  found by scanning a *player's* monthly archives. That's why a chess.com link needs
+  `?username=`. Lichess has a proper `/game/export/{id}`.
+- **Chess.com game IDs are not ordered by date** — ID ranges overlap month to month
+  for active players, so the archives cannot be bisected. It has to be a scan.
+- **Grid/flex items default to `min-width: auto`** and will happily shove the page
+  sideways. This caused a horizontal overflow on phones (565px of content on a 390px
+  screen) that predated any of this work.
