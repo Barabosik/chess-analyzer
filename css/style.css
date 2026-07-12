@@ -120,7 +120,7 @@ select#depthSel{width:100%}
 @media (max-width:520px){.gmeta{display:none}}
 
 /* ============ main grid ============ */
-.grid{display:grid;grid-template-columns:minmax(320px,1fr) 372px;gap:18px;align-items:start}
+.grid{display:grid;grid-template-columns:minmax(320px,1fr) 480px;gap:18px;align-items:start}
 @media (max-width:900px){.grid{grid-template-columns:1fr}}
 .rightcol{display:flex;flex-direction:column;gap:16px;max-height:calc(100vh - 120px)}
 
@@ -274,18 +274,18 @@ select#depthSel{width:100%}
 .tinysel{padding:2px 6px;font-size:11px}
 
 /* ============ move list ============ */
-.movescard{padding:6px 6px 10px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;min-height:280px}
-.sectlabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 10px 8px;flex-shrink:0}
+.movescard{padding:8px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+.sectlabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:8px 8px 6px;flex-shrink:0}
 .movelist{flex:1;overflow-y:auto}
 .mvempty-msg{padding:10px 12px;font-size:13px;color:var(--muted)}
-.mvrow{display:grid;grid-template-columns:30px 1fr 1fr;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;padding:0 2px}
-.mvrow .no{color:var(--muted);display:flex;align-items:center;font-size:11px;font-weight:600}
-.mv{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;cursor:pointer;margin:2px 0;min-height:28px}
+.mvrow{display:grid;grid-template-columns:28px 1fr 1fr 1fr;align-items:center;gap:6px;font-family:var(--mono);font-size:14px;padding:0}
+.mvrow .no{color:var(--muted);display:flex;align-items:center;font-size:12px;font-weight:600;text-align:center}
+.mv{display:grid;grid-template-columns:subgrid;grid-column:1/-1;align-items:center;padding:5px 6px;border-radius:6px;cursor:pointer;margin:1px 0;min-height:30px}
 .mv:hover{background:var(--panel2)}
 .mv.active{background:color-mix(in srgb,var(--accent) 22%,transparent);outline:1px solid var(--accent)}
-.mv .san{font-weight:700;font-size:14px}
-.mv .cg{margin-left:auto;font-weight:800;font-size:11px;flex-shrink:0}
-.mv .ev{color:var(--muted);font-size:11px;min-width:48px;text-align:right;flex-shrink:0}
+.mv .san{font-weight:700;font-size:15px}
+.mv .cg{font-weight:800;font-size:12px;flex-shrink:0}
+.mv .ev{color:var(--muted);font-size:12px;text-align:right;flex-shrink:0}
 .mv.empty{cursor:default}
 
 /* ============ legend / footer ============ */
