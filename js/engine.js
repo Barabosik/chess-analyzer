@@ -57,6 +57,20 @@ export class Engine {
 
   setMultiPV(n) { this.post("setoption name MultiPV value " + n); }
 
+  // Clear the transposition table. Without this a review's evaluations depend on
+  // whatever was analysed before it, so the same game reviewed twice could come
+  // back with different labels around the class boundaries. Positions within one
+  // review are still searched in the same order, so the hash is still reused for
+  // speed — it just no longer carries state in from earlier games.
+  newGame() {
+    return new Promise((res) => {
+      const fn = (l) => { if (l === "readyok") { this.off(fn); res(); } };
+      this.on(fn);
+      this.post("ucinewgame");
+      this.post("isready");
+    });
+  }
+
   // Halt any running search and wait for the engine to settle (bestmove).
   abort() {
     if (this._liveFn) { this.off(this._liveFn); this._liveFn = null; }

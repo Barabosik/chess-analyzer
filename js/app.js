@@ -1,9 +1,9 @@
-import { Chess } from "../vendor/chess.js?v=13";
-import { Engine } from "./engine.js?v=13";
-import { renderBoard } from "./board.js?v=13";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=13";
+import { Chess } from "../vendor/chess.js?v=15";
+import { Engine } from "./engine.js?v=15";
+import { renderBoard } from "./board.js?v=15";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=15";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=13";
+  from "./onlinegames.js?v=15";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -53,7 +53,7 @@ try {
 const $ = (id) => document.getElementById(id);
 const el = {};
 ["board","evalFill","evalNum","engineStatus","pgnInput","fenInput","depthSel","linesSel",
- "movelist","summary","accWhite","accBlack","accWName","accBName","rateWhite","rateBlack","rateWName","rateBName","counts","hdrTitle","hdrMeta",
+ "movelist","summary","accWhite","accBlack","accWName","accBName","counts","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
@@ -810,11 +810,15 @@ function renderMoveList() {
   }
 }
 
-// Rough single-game strength estimate mapped from accuracy. It's an estimate,
-// not an official rating, and won't match chess.com's proprietary formula exactly.
-function estRating(acc) {
-  return Math.round(Math.max(100, Math.min(2900, 6.8 * Math.exp(0.0575 * acc))) / 25) * 25;
-}
+// There used to be an "estimated rating" here, mapped from accuracy by
+// 6.8 * exp(0.0575 * acc). Checked against 64 real games spanning 280-3414 Elo,
+// it was wrong by 1072 Elo on average: two players 2500 points apart produced
+// the SAME accuracy (88.4% -> real 322, 89.3% -> real 2826), and the curve
+// mathematically topped out near 2100, so every strong player was under-rated by
+// ~1700. Nor is it a matter of re-fitting: accuracy does correlate with strength
+// (r = 0.63), but even the best possible fit still misses by ~850 Elo, because a
+// quiet game inflates accuracy and a sharp one deflates it whoever is playing.
+// A number that wrong is worse than no number, so the estimate is gone.
 
 function renderSummary() {
   const R = state.review;
@@ -828,10 +832,6 @@ function renderSummary() {
   el.accBName.textContent = state.headers.Black || "Black";
   el.accWhite.textContent = R.accWhite + "%";
   el.accBlack.textContent = R.accBlack + "%";
-  el.rateWName.textContent = state.headers.White || "White";
-  el.rateBName.textContent = state.headers.Black || "Black";
-  el.rateWhite.textContent = estRating(R.accWhite);
-  el.rateBlack.textContent = estRating(R.accBlack);
   renderTimeNote();
   el.counts.innerHTML = "";
   for (const k of CLASS_ORDER) {

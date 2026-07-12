@@ -42,18 +42,33 @@ vendor/               chess.js, Stockfish 18 lite WASM, cburnett pieces
 
 ## Testing your change
 
-There's no automated test suite yet, so please test by hand before opening a PR.
-Serve the app locally and check the flows your change touches, at minimum:
+There's an end-to-end suite. It drives a real browser against a real Stockfish, so it
+exercises the app the way you do — no mocks.
 
-1. The page loads with **no errors** in the browser console.
-2. **Load sample**, then **Analyze game** — the review completes and shows accuracy,
-   move classifications, the coach bubble, and the evaluation graph.
-3. Step through moves (`←` / `→`, clicking moves, the eval graph).
-4. Import works: paste a PGN, upload a `.pgn`, and load a FEN.
-5. Both **light and dark** themes still look right (toggle top-right).
+```bash
+npm install
+npm run test:setup     # downloads Chromium (once)
+npm test               # runs everything
+npm test drag links    # or just the suites whose names match
+```
 
-Adding a lightweight automated test (e.g. a Playwright/Puppeteer smoke test) is itself
-a very welcome contribution.
+The app itself still has **no dependencies and no build step** — `package.json` exists
+only for the tests, and the suite serves the folder itself.
+
+| suite | what it protects |
+|---|---|
+| `classifier` | checkmate scores as a win; book moves form an unbroken prefix; Brilliant means a real sacrifice; the same game reviews identically twice |
+| `import` | username import from Chess.com / Lichess, and a full review end to end |
+| `links` | opening one game from a pasted link, and the errors when that can't work |
+| `share-and-clocks` | short pointer links, gzipped PGN links, per-move clock times |
+| `drag` | drag-and-drop and click-to-move, legal and illegal drops |
+| `touch` | dragging with a finger on a phone viewport |
+| `layout` | board and moves visible together; move text never overlaps its glyph |
+
+Some suites hit the live Chess.com and Lichess APIs, so they need a network connection.
+
+Every check in `classifier.test.mjs` is a bug that actually shipped — if you touch
+`review.js`, run it. And when you fix a bug, add the assertion that would have caught it.
 
 ## Coding style
 

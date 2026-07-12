@@ -1,7 +1,7 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=13";
-import { OPENINGS } from "../vendor/openings.js?v=13";
+import { Chess } from "../vendor/chess.js?v=15";
+import { OPENINGS } from "../vendor/openings.js?v=15";
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -131,6 +131,11 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
   const bookPlies = opts.bookPlies || 10;
   const onProgress = opts.onProgress || (() => {});
   const signal = opts.signal || {};
+
+  // Start from a clean transposition table, so a review depends only on the game
+  // being reviewed. Otherwise the same game scores differently depending on what
+  // was analysed before it, and labels flip around the class boundaries.
+  if (engine.newGame) await engine.newGame();
 
   // Analyse every node once (positions before each move + the final position).
   const fens = moves.map((m) => m.fenBefore);

@@ -1,0 +1,14 @@
+{
+  "name": "chess-analyzer",
+  "private": true,
+  "type": "module",
+  "description": "Tooling for the test suite only — the app itself has no dependencies and no build step.",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:setup": "playwright install chromium",
+    "serve": "node -e \"import('./tests/lib/server.mjs').then(m=>m.startServer(8000).then(s=>console.log('serving '+s.url)))\""
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
