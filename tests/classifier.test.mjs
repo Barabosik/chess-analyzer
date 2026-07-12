@@ -11,8 +11,8 @@ const classes = () => page.evaluate(() =>
     ev: m.querySelector(".ev") ? m.querySelector(".ev").textContent : "",
   })));
 const accuracy = () => page.evaluate(() => ({
-  w: parseFloat(document.getElementById("accWhite").textContent),
-  b: parseFloat(document.getElementById("accBlack").textContent),
+  w: parseFloat(document.querySelectorAll("#accStrip .a b")[0].textContent),
+  b: parseFloat(document.querySelectorAll("#accStrip .a b")[1].textContent),
 }));
 
 // ---------------------------------------------------------------------------
@@ -96,16 +96,22 @@ const second = await classes();
 }
 
 // ---------------------------------------------------------------------------
-// Brilliant means a real sacrifice. 16.Bxh6 gives up a bishop; the recaptures
-// around it (17.Qxh6, 19.Rxe4, 20.Bxe4) give up nothing and must not be Brilliant.
+// Brilliant means offering a piece and ending up down on the deal.
+//   16.Bxh6! gives a bishop for two pawns — nets 1, and IS a sacrifice.
+//   17.Qxh6, 19.Rxe4, 20.Bxe4, gxh6 are recaptures — they give up nothing.
+// Requiring 2+ points of net loss killed the first; counting only the mover's own
+// material promoted all of the second.
 // ---------------------------------------------------------------------------
 {
   const brilliant = second.filter((r) => r.cls === "!!").map((r) => r.san);
+  // Recaptures and pawn grabs — none of these hands over a piece.
+  // (Rxe6 is NOT in this list: it really is an exchange sacrifice, netting 2.)
   const trades = ["gxh6", "dxe4", "Bxe4", "Qxh6"];
   const fake = brilliant.filter((s) => trades.includes(s));
+  t.ok("a real piece sacrifice IS Brilliant (16.Bxh6, bishop for two pawns)",
+    brilliant.includes("Bxh6"), "Brilliant: [" + brilliant.join(", ") + "]");
   t.ok("plain recaptures are not Brilliant", fake.length === 0,
-    "Brilliant: [" + brilliant.join(", ") + "]" +
-    (fake.length ? "  <-- trades wrongly marked: " + fake.join(", ") : ""));
+    fake.length ? "trades wrongly marked: " + fake.join(", ") : "none of " + trades.join(", "));
 }
 
 t.ok("no uncaught page errors", errors.length === 0, errors.slice(0, 3).join(" || ") || "clean");

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=15" />
+  <link rel="stylesheet" href="css/style.css?v=17" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -190,19 +190,16 @@
           </select></div>
         </section>
 
+        <!-- Accuracy is shown once, up beside the board. This card is the breakdown. -->
         <section class="card summary hidden" id="summary">
-          <div class="sectlabel">Game review</div>
-          <div class="acc">
-            <div class="accbox"><div class="who" id="accWName">White</div><div class="n" id="accWhite">–</div><div class="l">Accuracy</div></div>
-            <div class="accbox"><div class="who" id="accBName">Black</div><div class="n" id="accBlack">–</div><div class="l">Accuracy</div></div>
-          </div>
-          <div class="ratingnote">
-            Accuracy is how close this game was to engine-perfect. It is <b>not</b> a rating —
-            measured against 64 real games, a single game's accuracy misses the player's actual
-            Elo by about 850 points even at best, so no rating is estimated from it.
-          </div>
+          <div class="sectlabel">Move breakdown</div>
           <div class="chead"><span>W</span><span>B</span></div>
           <div class="counts" id="counts"></div>
+          <div class="ratingnote">
+            Accuracy is how close the game was to engine-perfect. It is <b>not</b> a rating —
+            checked against 64 real games, a single game's accuracy misses the player's actual
+            Elo by ~850 points even at best, so none is estimated from it.
+          </div>
         </section>
       </div>
     </div>
@@ -233,6 +230,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=15"></script>
+  <script type="module" src="js/app.js?v=17"></script>
 </body>
 </html>

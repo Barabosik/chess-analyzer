@@ -1,7 +1,7 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=15";
-import { OPENINGS } from "../vendor/openings.js?v=15";
+import { Chess } from "../vendor/chess.js?v=17";
+import { OPENINGS } from "../vendor/openings.js?v=17";
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -27,6 +27,19 @@ const BOOK_MAX_LOSS = 5;    // a move that costs this much win% is not theory
 // exactly equal, 10cp promotes 78 (13%), 50cp would promote 35% and make the
 // label meaningless.
 const BEST_TOL_CP = 10;
+
+// A Brilliant must hand over at least this much material on net, having offered a
+// piece (>= 3 points) to do it. See the sacrifice test for why both halves matter.
+const SAC_MIN_GIVEN = 1;
+// ...and the sacrifice must be SOUND, not merely made from a winning position.
+// Requiring the mover to be +0.80 up afterwards (as this used to) throws out every
+// sacrifice that just keeps the balance — including the commonest brilliancy there
+// is, a bishop for two pawns, which left the sample game at +0.08. Requiring only
+// that you are not worse afterwards keeps those, while still rejecting desperation
+// sacs from lost positions. The cap on the eval BEFORE the move stops a player who
+// is already crushing from earning Brilliants for throwing away spare material.
+const SAC_MIN_EVAL_AFTER = 0;      // still sound after the sacrifice
+const SAC_MAX_EVAL_BEFORE = 300;   // and not already completely winning
 // The deepest named opening the game reached.
 export function detectOpening(moves) {
   let last = null;
@@ -233,11 +246,19 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     const matBefore = material(cBefore, mv.color);
     const taken = cBefore.get(mv.to);                           // what this move captured
     const winBack = seeGain(mv.fenAfter, mv.to);                // what the opponent wins back there
+    const offered = new Chess(mv.fenAfter).get(mv.to);          // the piece now standing there
     // Net material handed over. Netting off the capture is essential: queen takes
-    // queen and is recaptured gives up nothing, but the exchange on that square
+    // queen and is recaptured gives up nothing, though the exchange on that square
     // still "wins" a queen for the opponent.
-    const sac = winBack - (taken ? VAL[taken.type] : 0) >= 2;
+    const given = winBack - (taken ? VAL[taken.type] : 0);
+    // A sacrifice offers a PIECE and ends up down on the deal. Requiring 2+ points
+    // of loss instead would reject the commonest brilliancy there is — a bishop for
+    // two pawns (Bxh6!) nets only 1 — while allowing any 1-point loss would promote
+    // ordinary pawn sacs. Offering a piece is what makes it a sacrifice; how much
+    // is left on the table afterwards only has to be more than nothing.
+    const sac = offered && VAL[offered.type] >= 3 && given >= SAC_MIN_GIVEN;
     const evalAfterMover = whiteMove ? evalWhite(after.best) : -evalWhite(after.best);
+    const evalBeforeMover = whiteMove ? evalWhite(before.best) : -evalWhite(before.best);
 
     // A move is theory only if the game is still inside the book phase AND the
     // move didn't actually cost anything. That second half matters: without it,
@@ -252,7 +273,9 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
 
     let cls;
     if (bookEntry) cls = "book";
-    else if (sac && loss < 3 && evalAfterMover >= 80 && evalAfterMover < 9000 && matBefore > 3) cls = "brilliant";
+    else if (sac && loss < 3 && matBefore > 3 &&
+             evalAfterMover >= SAC_MIN_EVAL_AFTER && evalAfterMover < 9000 &&
+             evalBeforeMover <= SAC_MAX_EVAL_BEFORE) cls = "brilliant";
     else if (isBest && gap != null && gap >= 12 && loss < 2) cls = "great";
     else if (isBest) cls = "best";
     else if (loss < 2) cls = "excellent";

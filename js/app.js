@@ -1,9 +1,9 @@
-import { Chess } from "../vendor/chess.js?v=15";
-import { Engine } from "./engine.js?v=15";
-import { renderBoard } from "./board.js?v=15";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=15";
+import { Chess } from "../vendor/chess.js?v=17";
+import { Engine } from "./engine.js?v=17";
+import { renderBoard } from "./board.js?v=17";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=17";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=15";
+  from "./onlinegames.js?v=17";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -53,7 +53,7 @@ try {
 const $ = (id) => document.getElementById(id);
 const el = {};
 ["board","evalFill","evalNum","engineStatus","pgnInput","fenInput","depthSel","linesSel",
- "movelist","summary","accWhite","accBlack","accWName","accBName","counts","hdrTitle","hdrMeta",
+ "movelist","summary","counts","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
@@ -828,10 +828,6 @@ function renderSummary() {
     '<div class="a"><b>' + R.accWhite + "%</b><span>" + esc(state.headers.White || "White") + "</span></div>" +
     '<div class="a"><b>' + R.accBlack + "%</b><span>" + esc(state.headers.Black || "Black") + "</span></div>";
   el.accStrip.classList.remove("hidden");
-  el.accWName.textContent = state.headers.White || "White";
-  el.accBName.textContent = state.headers.Black || "Black";
-  el.accWhite.textContent = R.accWhite + "%";
-  el.accBlack.textContent = R.accBlack + "%";
   renderTimeNote();
   el.counts.innerHTML = "";
   for (const k of CLASS_ORDER) {

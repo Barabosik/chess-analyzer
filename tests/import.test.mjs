@@ -178,8 +178,8 @@ await page.selectOption("#depthSel", "12");
 await page.click("#reviewBtn");
 await page.waitForSelector("#summary:not(.hidden)", { timeout: 240000 });
 const summary = await page.evaluate(() => ({
-  accW: document.getElementById("accWhite").textContent,
-  accB: document.getElementById("accBlack").textContent,
+  accW: document.querySelectorAll("#accStrip .a b")[0].textContent,
+  accB: document.querySelectorAll("#accStrip .a b")[1].textContent,
   classified: document.querySelectorAll(".mv .cg").length,
   graph: !document.getElementById("graphCard").classList.contains("hidden"),
 }));
