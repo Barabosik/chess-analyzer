@@ -122,7 +122,7 @@ select#depthSel{width:100%}
 /* ============ main grid ============ */
 .grid{display:grid;grid-template-columns:minmax(320px,1fr) 372px;gap:18px;align-items:start}
 @media (max-width:900px){.grid{grid-template-columns:1fr}}
-.rightcol{display:flex;flex-direction:column;gap:16px}
+.rightcol{display:flex;flex-direction:column;gap:16px;max-height:calc(100vh - 120px)}
 
 /* ============ board ============ */
 .boardcard{padding:16px}
@@ -200,7 +200,7 @@ select#depthSel{width:100%}
 .timenote b{color:var(--ink)}
 
 /* ============ review / summary ============ */
-.review{padding:15px}
+.review{padding:15px;flex-shrink:0}
 .rev-head{display:flex}
 .big{width:100%;padding:12px;font-size:15px;font-weight:700}
 .primary.cancel{background:var(--blunder);border-color:var(--blunder)}
@@ -238,7 +238,7 @@ select#depthSel{width:100%}
 .countrow .cb{color:var(--muted)}
 
 /* ============ live engine ============ */
-.live{padding:14px}
+.live{padding:14px;flex-shrink:0}
 .live.off{opacity:.55}
 .live-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .toggle{font-size:12px;padding:5px 12px;border-radius:20px}
@@ -274,9 +274,9 @@ select#depthSel{width:100%}
 .tinysel{padding:2px 6px;font-size:11px}
 
 /* ============ move list ============ */
-.movescard{padding:6px 6px 10px}
-.sectlabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 10px 8px}
-.movelist{max-height:360px;overflow-y:auto}
+.movescard{padding:6px 6px 10px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+.sectlabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 10px 8px;flex-shrink:0}
+.movelist{flex:1;overflow-y:auto}
 .mvempty-msg{padding:10px 12px;font-size:13px;color:var(--muted)}
 .mvrow{display:grid;grid-template-columns:34px 1fr 1fr;align-items:stretch;font-family:var(--mono);font-size:13px}
 .mvrow .no{color:var(--muted);display:flex;align-items:center;padding-left:8px;font-size:12px}
