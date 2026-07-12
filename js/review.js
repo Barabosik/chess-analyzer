@@ -1,7 +1,7 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=9";
-import { OPENINGS } from "../vendor/openings.js?v=9";
+import { Chess } from "../vendor/chess.js?v=10";
+import { OPENINGS } from "../vendor/openings.js?v=10";
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -43,6 +43,26 @@ export const CLASSES = {
   blunder:    { g: "??", label: "Blunder",     v: "--blunder" },
 };
 export const CLASS_ORDER = ["brilliant", "great", "best", "excellent", "good", "book", "inaccuracy", "mistake", "blunder"];
+
+// A position with no legal moves has no engine evaluation: Stockfish answers
+// "bestmove (none)" with no principal variation, so `best` comes back null and
+// the position reads as a dead-equal 0.00. For stalemate that happens to be
+// right (a draw IS 0.00). For CHECKMATE it is badly wrong: the mating move looks
+// like it threw the game away, and the mater's accuracy collapses (delivering
+// Scholar's mate scored 51%). So decide terminal positions ourselves rather than
+// asking the engine — which also saves a search.
+export const MATE_CP = 100000;   // "won outright", saturates winPct to 100 / 0
+
+function terminalNode(fen) {
+  const c = new Chess(fen);
+  if (!c.isGameOver()) return null;
+  const stm = fen.split(" ")[1] === "b" ? "b" : "w";
+  const best = c.isCheckmate()
+    // the side to move is the one being mated, so the other side just won
+    ? { cp: stm === "b" ? MATE_CP : -MATE_CP, mate: null }
+    : { cp: 0, mate: null };                       // stalemate or another draw
+  return { stm, bestmove: null, best, lines: [best] };
+}
 
 export function winPct(cp) {
   return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
@@ -87,6 +107,8 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
   const node = [];
   for (let i = 0; i < fens.length; i++) {
     if (signal.cancelled) return null;
+    const term = terminalNode(fens[i]);   // checkmate / stalemate: the rules decide, not the engine
+    if (term) { node.push(term); onProgress(i + 1, fens.length); continue; }
     const wantMulti = i < moves.length ? 2 : 1; // second-best only needed before a move
     const r = await engine.analyse(fens[i], { depth, multipv: wantMulti });
     node.push(r);

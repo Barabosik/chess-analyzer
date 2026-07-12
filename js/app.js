@@ -1,9 +1,9 @@
-import { Chess } from "../vendor/chess.js?v=9";
-import { Engine } from "./engine.js?v=9";
-import { renderBoard } from "./board.js?v=9";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=9";
+import { Chess } from "../vendor/chess.js?v=10";
+import { Engine } from "./engine.js?v=10";
+import { renderBoard } from "./board.js?v=10";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=10";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=9";
+  from "./onlinegames.js?v=10";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -66,6 +66,8 @@ const el = {};
 // ---------- helpers ----------
 function fmtEval(cp, mate) {
   if (mate != null) return (mate > 0 ? "#" : "#-") + Math.abs(mate);
+  // checkmate already on the board: the game is over, so show the result
+  if (Math.abs(cp || 0) >= MATE_CP) return cp > 0 ? "1-0" : "0-1";
   const v = (cp || 0) / 100;
   return (v > 0 ? "+" : "") + v.toFixed(2);
 }
@@ -846,6 +848,7 @@ function renderSummary() {
 
 function fmtEvalBar(cp, mate) {
   if (mate != null) return "M" + Math.abs(mate);
+  if (Math.abs(cp || 0) >= MATE_CP) return "#";
   return (Math.abs(cp || 0) / 100).toFixed(1);
 }
 function updateEvalBar(cp, mate) {
