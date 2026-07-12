@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=20" />
+  <link rel="stylesheet" href="css/style.css?v=21" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -176,11 +176,6 @@
             <div class="live-meta"><span class="mono" id="liveEval">–</span><span class="dim mono" id="liveDepth"></span></div>
           </div>
           <div class="assess hidden" id="assessBox">
-            <div class="assess-head">
-              <span class="cg" id="assessGlyph"></span>
-              <span class="assess-title" id="assessHead"></span>
-              <span class="evchip" id="assessEval"></span>
-            </div>
             <div class="assess-note" id="assessNote"></div>
             <div class="assess-best" id="assessBest"></div>
           </div>
@@ -231,6 +226,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=20"></script>
+  <script type="module" src="js/app.js?v=21"></script>
 </body>
 </html>

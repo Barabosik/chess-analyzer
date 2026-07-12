@@ -144,6 +144,19 @@ precision without a deeper search).
 
 ## Gotchas
 
+- **An "infinite" search still ends on its own.** On a solved position (a forced
+  mate) `go infinite` races to Stockfish's max depth (~245 — that stray "245" in the
+  live panel) and emits a `bestmove` nobody asked for. The live handler ignored it, so
+  `_busy` stayed stuck `true` and the next `abort()` waited forever for a `bestmove`
+  that had already come — the panel froze, even back on the main game. The live handler
+  now clears `_busy` on `bestmove`, and `abort()` has a timeout fallback so the UI can
+  never hang on a lost `bestmove`. Pinned by `tests/engine-explore.test.mjs`.
+- **The "stronger move" suggestion only shows on a real mistake** (`showBetter`).
+  Without that gate it told you your best move was "excellent" and then pointed at a
+  *worse* move labelled "best" — because the played-move eval and the pre-move best-line
+  eval come from different searches and aren't directly comparable near equality.
+
+
 - **Bump `?v=N` on every JS/CSS change** (`sed -i '' 's/?v=N/?v=N+1/g' js/*.js index.html`).
   Forgetting it once cost an hour: a stale cached module produced a bug that did not
   exist in the code, and the error message pointed somewhere else entirely.

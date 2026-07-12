@@ -6,8 +6,8 @@
 // (seeGain) plus board geometry -- exact, and identical on every run. The
 // engine's SCORE is still used, to know a mistake happened and whether mate is
 // forced; its move is not.
-import { Chess, SQUARES } from "../vendor/chess.js?v=20";
-import { seeGain, VAL } from "./review.js?v=20";
+import { Chess, SQUARES } from "../vendor/chess.js?v=21";
+import { seeGain, VAL } from "./review.js?v=21";
 
 const NAME = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
 const BLAME = { inaccuracy: 1, mistake: 1, blunder: 1 };

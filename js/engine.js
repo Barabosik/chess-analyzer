@@ -76,11 +76,15 @@ export class Engine {
     if (this._liveFn) { this.off(this._liveFn); this._liveFn = null; }
     if (!this._busy) return Promise.resolve();
     return new Promise((res) => {
-      const fn = (l) => {
-        if (l.startsWith("bestmove")) { this.off(fn); this._busy = false; res(); }
-      };
+      let done = false;
+      const finish = () => { if (done) return; done = true; this.off(fn); clearTimeout(tm); this._busy = false; res(); };
+      const fn = (l) => { if (l.startsWith("bestmove")) finish(); };
       this.on(fn);
       this.post("stop");
+      // A search that already ended on its own (an infinite search hits max depth
+      // on a solved / forced-mate position) delivers no bestmove to "stop", so
+      // never let the UI hang waiting for one.
+      const tm = setTimeout(finish, 1200);
     });
   }
 
@@ -119,6 +123,10 @@ export class Engine {
     const stm = fen.split(" ")[1] || "w";
     const lines = {};
     this._liveFn = (l) => {
+      // An "infinite" search still ends on its own at max depth on a solved
+      // position. If we don't clear _busy here, the next abort() waits forever
+      // for a bestmove that already came and went, and the engine locks up.
+      if (l.startsWith("bestmove")) { this._busy = false; return; }
       if (l.startsWith("info") && l.includes(" pv ") && l.includes(" score ")) {
         const i = parseInfo(l, stm);
         if (i) {

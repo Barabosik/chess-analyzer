@@ -1,10 +1,10 @@
-import { Chess } from "../vendor/chess.js?v=20";
-import { Engine } from "./engine.js?v=20";
-import { renderBoard } from "./board.js?v=20";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=20";
-import { rollup } from "./motifs.js?v=20";
+import { Chess } from "../vendor/chess.js?v=21";
+import { Engine } from "./engine.js?v=21";
+import { renderBoard } from "./board.js?v=21";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=21";
+import { rollup } from "./motifs.js?v=21";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=20";
+  from "./onlinegames.js?v=21";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -61,7 +61,7 @@ const el = {};
  "movelist","summary","counts","motifNote","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
- "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
+ "exploreTxt","engineName","capW","capB","assessBox",
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
  "siteSel","userInput","loadUser","acctMsg","gameList",
  "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote","accStrip",
@@ -154,6 +154,32 @@ function playMoveSound(mv) {
   if (san.includes("x") || mv.captured) return blip({ freq: 200, dur: 0.10, gain: 0.18, noisy: true });
   if (san.startsWith("O-O")) return blip({ freq: 175, dur: 0.12, gain: 0.15 });
   blip({ freq: 240, dur: 0.075, gain: 0.12 });
+}
+
+// A short synthesized fanfare for the two rare classes, to go with the on-board
+// flourish. Brilliant is a bright rising arpeggio with a high sparkle; Great is
+// a warm two-note chime. Built with WebAudio like the move sounds — no files.
+function celebrateSound(cls) {
+  if (!state.sound || (cls !== "brilliant" && cls !== "great")) return;
+  const ctx = audio();
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  const chime = (freq, at, dur, gain, type) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(gain, at + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(at); o.stop(at + dur + 0.02);
+  };
+  if (cls === "brilliant") {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => chime(f, t0 + i * 0.075, 0.32, 0.16, "triangle"));
+    chime(1567.98, t0 + 0.26, 0.5, 0.09, "sine");   // shimmer on top
+  } else {
+    chime(523.25, t0, 0.34, 0.15, "sine");
+    chime(783.99, t0 + 0.1, 0.42, 0.15, "sine");     // up a fifth
+  }
 }
 
 // ---------- share link ----------
@@ -478,17 +504,16 @@ function renderAssessment() {
   const show = state.reviewed && state.ply > 0 && !state.explore;
   if (!show) { el.assessBox.classList.add("hidden"); return; }
   const mv = state.moves[state.ply - 1];
-  const cl = CLASSES[mv.cls];
-  el.assessGlyph.textContent = cl.g;
-  el.assessGlyph.style.background = "var(" + cl.v + ")";
-  el.assessHead.innerHTML = "<b>" + mv.san + "</b> is " + cl.label.toLowerCase();
-  el.assessEval.textContent = fmtEval(mv.cpWhite, mv.mateWhite);
   el.assessNote.textContent = coachNote(mv);
-  if (mv.bestSan && mv.bestSan !== mv.san) {
+  // Only suggest a better move when the played move actually underperformed one
+  // (mistake/blunder/inaccuracy). Otherwise we'd tell the player their best move
+  // was "excellent" and then point at a WORSE move labelled "best" — the readout
+  // under the board already headlines the move and its class.
+  if (mv.showBetter && mv.bestSan && mv.bestSan !== mv.san) {
     el.assessBest.classList.remove("hidden");
     el.assessBest.classList.add("clickable");
     el.assessBest.innerHTML =
-      '<span class="cg" style="color:var(--best)">★</span> <b>' + mv.bestSan + "</b> is best" +
+      '<span class="cg" style="color:var(--best)">★</span> <b>' + mv.bestSan + "</b> was stronger" +
       '<span class="preview-hint">▶ see it</span>' +
       '<span class="evchip">' + fmtEval(mv.bestCpWhite, mv.bestMateWhite) + "</span>";
     el.assessBest.onclick = () => previewBest(mv);
@@ -902,10 +927,7 @@ function renderReadout() {
     let sub = "Eval " + fmtEval(mv.cpWhite, mv.mateWhite);
     if (mv.spent != null) sub += " · took " + fmtSecs(mv.spent);
     if (mv.loss >= 5) sub += " · lost " + mv.loss + "% win chance";
-    if (mv.showBetter && mv.bestSan) sub += ' · better was <b class="bestlink">' + mv.bestSan + "</b>";
-    el.readSub.innerHTML = sub;
-    const bl = el.readSub.querySelector(".bestlink");
-    if (bl) bl.onclick = () => previewBest(mv);
+    el.readSub.innerHTML = sub;   // the "stronger move" suggestion lives in the assessment card
   } else {
     el.readGlyph.style.background = "var(--muted)";
     el.readGlyph.textContent = "•";
@@ -1010,7 +1032,7 @@ function goto(ply) {
   drawBoard();
   if (state.ply === prev + 1 && state.ply > 0) {
     const m = state.moves[state.ply - 1]; animateMove(m.from, m.to); playMoveSound(m);
-    if (state.reviewed) flourish(m);
+    if (state.reviewed) { flourish(m); celebrateSound(m.cls); }
   } else if (state.ply === prev - 1 && prev > 0) {
     const m = state.moves[prev - 1]; animateMove(m.to, m.from); playMoveSound(m);
   }

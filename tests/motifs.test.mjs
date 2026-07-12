@@ -24,9 +24,17 @@ const blameNotes = () => page.evaluate(() =>
 // --- hung piece: 3.Qxe5+ grabs a pawn and hangs the queen to Nxe5 -----------
 await loadPgn(page, '[White "W"]\n[Black "B"]\n[Result "0-1"]\n\n1. e4 e5 2. Qh5 Nc6 3. Qxe5+ Nxe5 0-1');
 await review(page, "12");
+const assessBestShown = () => page.evaluate(() => {
+  const e = document.getElementById("assessBest");
+  return !!e && !e.classList.contains("hidden");
+});
 {
-  const note = await noteAt(5);           // 3.Qxe5+
+  const note = await noteAt(5);           // 3.Qxe5+ (a blunder)
   t.ok("hanging the queen is named a hung piece", /queen/i.test(note) && /hangs/i.test(note), note);
+  t.ok("a blunder suggests a stronger move", await assessBestShown(), "assessBest hidden on a blunder");
+  await noteAt(6);                         // 3...Nxe5 wins the queen back — a best move
+  t.ok("a best move does not suggest a worse alternative", !(await assessBestShown()),
+    "assessBest shown on a best move");
 }
 
 // --- allowed mate: Scholar's mate, 3...Nf6 lets Qxf7# in ---------------------
