@@ -1,11 +1,12 @@
-import { Chess } from "../vendor/chess.js?v=25";
-import { Engine } from "./engine.js?v=25";
-import { renderBoard } from "./board.js?v=25";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=25";
-import { rollup } from "./motifs.js?v=25";
-import { reviewKey, getCached, putCached } from "./cache.js?v=25";
+import { Chess } from "../vendor/chess.js?v=26";
+import { Engine } from "./engine.js?v=26";
+import { renderBoard } from "./board.js?v=26";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=26";
+import { rollup } from "./motifs.js?v=26";
+import { reviewKey, getCached, putCached } from "./cache.js?v=26";
+import { drawCard, cardName } from "./card.js?v=26";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=25";
+  from "./onlinegames.js?v=26";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -69,7 +70,7 @@ const el = {};
 ["board","evalFill","evalNum","engineStatus","pgnInput","fenInput","depthSel","linesSel",
  "movelist","summary","counts","motifNote","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
- "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar","phases","phaseRows",
+ "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar","phases","phaseRows","cardBtn",
  "exploreTxt","explainBar","explainTxt","explainPrev","explainNext","explainDone","engineName","capW","capB","assessBox",
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
  "siteSel","userInput","loadUser","acctMsg","gameList",
@@ -860,6 +861,8 @@ function loadGame(parsed) {
   state.review = null;
   state.explore = null;
   state.selected = null;
+  el.cardBtn.classList.add("hidden");   // nothing to report until this game is reviewed
+  window.__card = null;
   state.opening = detectOpening(parsed.moves);
   state.hasClocks = parsed.moves.some((m) => m.spent != null);
   // A pasted game has no site to point at; the importers set this again after.
@@ -1484,9 +1487,36 @@ function applyReview(res, fromCache) {
   state.reviewed = true;
   window.__moves = res.moves;        // test hook: lets the suite read classifications + motifs
   window.__fromCache = fromCache;    // test hook: did this review come back without the engine?
+  el.cardBtn.classList.remove("hidden");   // there is a report to share now
   renderSummary();
   renderMoveList();
   goto(state.ply);
+}
+
+// ---------- shareable report card ----------
+// A PNG of how the game went, for posting. Drawn rather than screenshotted: see js/card.js.
+async function saveCard() {
+  const canvas = document.createElement("canvas");
+  drawCard(canvas, { headers: state.headers, moves: state.moves, review: state.review });
+  window.__card = { w: canvas.width, h: canvas.height, url: canvas.toDataURL("image/png") };  // test hook
+
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = cardName(state.headers);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  chip(el.cardBtn, "📷 Saved ✓", "📷 Save image");
+}
+
+// Briefly confirm on a button, then put its label back.
+let chipTimer2 = null;
+function chip(btn, on, off) {
+  btn.textContent = on;
+  clearTimeout(chipTimer2);
+  chipTimer2 = setTimeout(() => { btn.textContent = off; }, 1800);
 }
 
 // ---------- engine boot ----------
@@ -1518,6 +1548,7 @@ function bind() {
   el.explainDone.onclick = exitExplain;
 
   el.reviewBtn.onclick = () => { state.reviewing ? (state.cancel.cancelled = true) : runReview(); };
+  el.cardBtn.onclick = saveCard;
 
   $("loadPgn").onclick = () => {
     const txt = el.pgnInput.value.trim();

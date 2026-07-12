@@ -167,6 +167,28 @@ asked for depth-22, so `tests/cache.test.mjs` pins exactly that: review at 12, a
 16, assert it re-runs; then assert both are cached side by side. IndexedDB is refused
 outright in some private windows — every call degrades to a no-op rather than failing.
 
+## The shareable report card (`js/card.js`)
+
+A 1200×630 PNG of how the game went, drawn on a canvas — **not** a screenshot of the
+page. A screenshot is the wrong aspect ratio for a link preview, carries whatever theme
+the user happens to be in, and shows chrome nobody wants to post. So the card is drawn
+in a fixed dark palette and looks identical whoever made it. Class colours are still
+read from the stylesheet (they are theme-independent), but the background must not be,
+or a light-theme user would post a white card and a dark-theme user a black one.
+
+The eval graph fills the area *under* the curve, the way chess sites do it, so White's
+share of the game is literally the pale part; mistakes and blunders are dotted on it.
+
+Two things a canvas gets wrong quietly, both fixed and worth remembering: a bare
+`slice()` on the opening name cuts mid-word and leaves a dangling comma ("…Scotch
+Variation Accepted,"), which reads as a bug rather than a long name — cut back to a word
+boundary and add an ellipsis. And every W/B pair (`97% / 92.5%`, `36/29`) needs its
+"WHITE / BLACK" legend *beside the numbers*, not stranded in a corner of the card.
+
+`tests/card.test.mjs` decodes the PNG back and inspects the pixels — a canvas test
+passes happily while drawing nothing, so it asserts the image is 2400×1260, has >40
+distinct colours, and actually contains the pale eval-graph region.
+
 ## Threading: measured, and rejected
 
 Multi-threaded Stockfish (`stockfish-18-lite.wasm` + `coi-serviceworker` to fake

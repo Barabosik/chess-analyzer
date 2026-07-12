@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=25" />
+  <link rel="stylesheet" href="css/style.css?v=26" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -151,6 +151,8 @@
             <b>Want to share this game?</b>
             <span class="sharekind" id="shareKind"></span>
           </div>
+          <!-- shown once the game has been reviewed: there is nothing to report before that -->
+          <button class="mini hidden" id="cardBtn" title="Download the game report as an image">📷 Save image</button>
           <button class="primary mini" id="shareBtn2">🔗 Copy link</button>
           <span class="sharenote hidden" id="shareNote"></span>
         </div>
@@ -252,6 +254,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=25"></script>
+  <script type="module" src="js/app.js?v=26"></script>
 </body>
 </html>
