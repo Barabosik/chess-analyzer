@@ -30,8 +30,10 @@ engine lines. **Your games are never uploaded** — the engine runs on your own 
 - **Opening names** — the game's opening is identified from a real openings book
   ("Four Knights Game: Scotch Variation, Main Line · C47"). Book moves are labelled
   from actual theory, and never get a "better move" suggestion — they're theory, there is no better.
-- **Explore lines** — click pieces to play out your own variations from any position;
-  the engine follows along. Hit *Return to game* to jump back.
+- **Explore lines** — **drag a piece** (or click it, then click a square) to play out your own
+  variations from any position; the engine follows along. Legal squares light up as you pick a
+  piece up, an illegal drop returns it, and it works with touch as well as a mouse.
+  Hit *Return to game* to jump back.
 - **Move sounds** — synthesized in the browser (distinct move / capture / check / castle), with a mute toggle.
 - **Time spent per move** — Chess.com and Lichess stamp every move with the mover's remaining clock,
   so the app shows how long each move took, drawn as a bar per move coloured by how good the move was.

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=6" />
+  <link rel="stylesheet" href="css/style.css?v=8" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -29,6 +29,14 @@
 
     <!-- Import -->
     <section class="card import">
+      <!-- Once a game is open this whole card folds away to one line, so the
+           board sits near the top of the page instead of below the fold. -->
+      <div class="impbar hidden" id="impBar">
+        <span class="impbar-name" id="impBarTxt">–</span>
+        <button class="mini" id="impToggle">Load another game</button>
+      </div>
+
+      <div id="impBody">
       <div class="acct">
         <label class="lab" for="userInput">Import from Chess.com or Lichess</label>
         <div class="acctrow">
@@ -65,18 +73,9 @@
           <label class="lab">Position (FEN)</label>
           <input type="text" id="fenInput" spellcheck="false" placeholder="rnbqkbnr/pppppppp/8/…" />
           <button id="loadFen">Load FEN</button>
-          <label class="lab" style="margin-top:14px">Review depth</label>
-          <select id="depthSel">
-            <option value="12">Depth 12 · fastest</option>
-            <option value="14">Depth 14 · fast</option>
-            <option value="16">Depth 16 · balanced</option>
-            <option value="18">Depth 18 · deep</option>
-            <option value="20">Depth 20 · deeper</option>
-            <option value="22">Depth 22 · deepest</option>
-            <option value="26">Depth 26 · maximum (slow)</option>
-          </select>
         </div>
       </div>
+      </div><!-- /impBody -->
     </section>
 
     <div class="grid">
@@ -143,24 +142,32 @@
           <div class="rev-head">
             <button class="primary big" id="reviewBtn" disabled>Analyze game</button>
           </div>
+          <!-- depth belongs with the analysis, not with the import form (which folds away) -->
+          <div class="depthrow">
+            <label class="lab" for="depthSel">Depth</label>
+            <select id="depthSel">
+              <option value="12">12 · fastest</option>
+              <option value="14">14 · fast</option>
+              <option value="16">16 · balanced</option>
+              <option value="18">18 · deep</option>
+              <option value="20">20 · deeper</option>
+              <option value="22">22 · deepest</option>
+              <option value="26">26 · maximum (slow)</option>
+            </select>
+          </div>
           <div class="progress hidden" id="progress">
             <div class="pbar"><div class="pfill" id="progressBar"></div></div>
             <div class="ptxt" id="progressTxt"></div>
           </div>
-          <div class="summary hidden" id="summary">
-            <div class="ratinghdr">Estimated rating</div>
-            <div class="acc rating">
-              <div class="accbox"><div class="who" id="rateWName">White</div><div class="n" id="rateWhite">–</div><div class="l">Game rating</div></div>
-              <div class="accbox"><div class="who" id="rateBName">Black</div><div class="n" id="rateBlack">–</div><div class="l">Game rating</div></div>
-            </div>
-            <div class="ratingnote">A rough estimate from this one game. Not an official rating.</div>
-            <div class="acc">
-              <div class="accbox"><div class="who" id="accWName">White</div><div class="n" id="accWhite">–</div><div class="l">Accuracy</div></div>
-              <div class="accbox"><div class="who" id="accBName">Black</div><div class="n" id="accBlack">–</div><div class="l">Accuracy</div></div>
-            </div>
-            <div class="chead"><span>W</span><span>B</span></div>
-            <div class="counts" id="counts"></div>
-          </div>
+          <!-- the headline number stays up here; the full breakdown is lower down -->
+          <div class="accstrip hidden" id="accStrip"></div>
+        </section>
+
+        <!-- Moves sit high, next to the board, so stepping through the game
+             never scrolls the board off the screen. -->
+        <section class="card movescard">
+          <div class="sectlabel">Moves</div>
+          <div class="movelist" id="movelist"></div>
         </section>
 
         <section class="card live" id="live">
@@ -183,9 +190,20 @@
           </select></div>
         </section>
 
-        <section class="card movescard">
-          <div class="sectlabel">Moves</div>
-          <div class="movelist" id="movelist"></div>
+        <section class="card summary hidden" id="summary">
+          <div class="sectlabel">Game review</div>
+          <div class="ratinghdr">Estimated rating</div>
+          <div class="acc rating">
+            <div class="accbox"><div class="who" id="rateWName">White</div><div class="n" id="rateWhite">–</div><div class="l">Game rating</div></div>
+            <div class="accbox"><div class="who" id="rateBName">Black</div><div class="n" id="rateBlack">–</div><div class="l">Game rating</div></div>
+          </div>
+          <div class="ratingnote">A rough estimate from this one game. Not an official rating.</div>
+          <div class="acc">
+            <div class="accbox"><div class="who" id="accWName">White</div><div class="n" id="accWhite">–</div><div class="l">Accuracy</div></div>
+            <div class="accbox"><div class="who" id="accBName">Black</div><div class="n" id="accBlack">–</div><div class="l">Accuracy</div></div>
+          </div>
+          <div class="chead"><span>W</span><span>B</span></div>
+          <div class="counts" id="counts"></div>
         </section>
       </div>
     </div>
@@ -216,6 +234,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=6"></script>
+  <script type="module" src="js/app.js?v=8"></script>
 </body>
 </html>

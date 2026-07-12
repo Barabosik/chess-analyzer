@@ -1,12 +1,14 @@
 // Renders a chess position from a FEN into a grid of squares, with last-move
 // highlight, a classification badge, coordinates, and optional click-to-move.
-import { CLASSES } from "./review.js?v=6";
+import { CLASSES } from "./review.js?v=8";
 
 // cburnett SVG piece set (GPL). Path is relative to the HTML document base.
 const PIECES = "vendor/pieces/cburnett/";
 
 export function renderBoard(el, fen, opts = {}) {
-  const { flip = false, lastMove = null, badge = null, selected = null, targets = [], arrows = [], onSquareClick = null } = opts;
+  const { flip = false, lastMove = null, badge = null, selected = null, targets = [], arrows = [],
+    onSquareClick = null, onSquareDown = null } = opts;
+  const stm = fen.split(" ")[1] || "w";
   const rowsFen = fen.split(" ")[0].split("/");
   const grid = rowsFen.map((fr) => {
     const arr = [];
@@ -36,6 +38,8 @@ export function renderBoard(el, fen, opts = {}) {
 
       if (piece) {
         const isWhite = piece === piece.toUpperCase();
+        // Pieces of the side to move can be picked up and dragged.
+        if (isWhite === (stm === "w")) sq.classList.add("grabbable");
         const pc = document.createElement("div");
         pc.className = "pc";
         pc.style.backgroundImage = "url('" + PIECES + (isWhite ? "w" : "b") + piece.toUpperCase() + ".svg')";
@@ -62,6 +66,7 @@ export function renderBoard(el, fen, opts = {}) {
         c.className = "coord f"; c.textContent = file; sq.appendChild(c);
       }
       if (onSquareClick) sq.addEventListener("click", () => onSquareClick(name));
+      if (onSquareDown) sq.addEventListener("pointerdown", (e) => onSquareDown(name, e));
       el.appendChild(sq);
     }
   }

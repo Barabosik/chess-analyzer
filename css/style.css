@@ -63,6 +63,12 @@ a:hover{border-color:var(--accent)}
 
 /* ============ import ============ */
 .import{padding:16px;margin-bottom:16px}
+/* the folded-away state, once a game is loaded */
+.import:has(#impBar:not(.hidden)){padding:10px 14px}
+.impbar{display:flex;align-items:center;gap:12px}
+.impbar-name{flex:1;min-width:0;font-size:13.5px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.impbar-name .dim{font-weight:400;color:var(--muted)}
 .import-grid{display:grid;grid-template-columns:1fr 250px;gap:18px}
 @media (max-width:680px){.import-grid{grid-template-columns:1fr}}
 .lab{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
@@ -122,7 +128,10 @@ select#depthSel{width:100%}
 /* ============ main grid ============ */
 .grid{display:grid;grid-template-columns:minmax(320px,1fr) 372px;gap:18px;align-items:start}
 @media (max-width:900px){.grid{grid-template-columns:1fr}}
-.rightcol{display:flex;flex-direction:column;gap:16px}
+/* Grid and flex items are min-width:auto by default, so they refuse to shrink
+   below their content and shove the whole page sideways on a phone. */
+.grid > *{min-width:0}
+.rightcol{display:flex;flex-direction:column;gap:16px;min-width:0}
 
 /* ============ board ============ */
 .boardcard{padding:16px}
@@ -143,7 +152,7 @@ select#depthSel{width:100%}
 .cap.b{color:var(--cap-b)}
 .captured .adv{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-ink);margin-left:6px;letter-spacing:0}
 
-.boardrow{display:flex;gap:9px}
+.boardrow{display:flex;gap:9px;min-width:0}
 .evalbar{width:22px;flex:none;border-radius:6px;overflow:hidden;background:#20242b;position:relative;border:1px solid var(--line)}
 .evalfill{position:absolute;left:0;right:0;bottom:0;top:0;background:#f2f0ea;transform:scaleY(.5);transform-origin:bottom;
   transition:transform .4s cubic-bezier(.4,0,.2,1)}
@@ -151,15 +160,25 @@ select#depthSel{width:100%}
 .evalnum.bot{bottom:2px;color:#3a3f47}
 .evalnum.top{top:2px;color:#c9cdd3}
 
-.board{flex:1;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
-  border-radius:8px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line);container-type:inline-size;position:relative}
+.board{flex:1;min-width:0;aspect-ratio:1;display:grid;
+  grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));
+  border-radius:8px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line);container-type:inline-size;position:relative;
+  touch-action:none;-webkit-user-select:none;user-select:none}
 .sq{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .sq.l{background:var(--sq-l)}.sq.d{background:var(--sq-d)}
 .sq.hl::after{content:"";position:absolute;inset:0;background:var(--hl);opacity:.42;mix-blend-mode:multiply}
 .sq.sel::before{content:"";position:absolute;inset:0;background:var(--sel);opacity:.5}
+/* a piece you can pick up right now */
+.sq.grabbable{cursor:grab}
+.sq.grabbable:active{cursor:grabbing}
+/* the square the dragged piece is currently over */
+.sq.over{box-shadow:inset 0 0 0 4px rgba(255,255,255,.65)}
 .pc{position:relative;z-index:1;width:100%;height:100%;pointer-events:none;
   background-size:contain;background-position:center;background-repeat:no-repeat;
-  filter:drop-shadow(0 1.5px 1px rgba(0,0,0,.22))}
+  filter:drop-shadow(0 1.5px 1px rgba(0,0,0,.22));-webkit-user-drag:none}
+/* lifted out of the square and carried under the cursor */
+.pc.dragging{z-index:30;transition:none;will-change:transform;
+  filter:drop-shadow(0 6px 8px rgba(0,0,0,.42))}
 .target{position:absolute;width:26%;height:26%;border-radius:50%;background:rgba(20,24,32,.28);z-index:2}
 .target.cap{width:82%;height:82%;background:transparent;border:5px solid rgba(20,24,32,.28);border-radius:50%}
 .coord{position:absolute;font-family:var(--mono);font-weight:700;z-index:1;font-size:max(11px,2cqw);line-height:1}
@@ -202,13 +221,16 @@ select#depthSel{width:100%}
 /* ============ review / summary ============ */
 .review{padding:15px}
 .rev-head{display:flex}
+.depthrow{display:flex;align-items:center;gap:10px;margin-top:11px}
+.depthrow .lab{margin-bottom:0;flex:none}
+.depthrow select{flex:1;min-width:0}
 .big{width:100%;padding:12px;font-size:15px;font-weight:700}
 .primary.cancel{background:var(--blunder);border-color:var(--blunder)}
 .progress{margin-top:12px}
 .pbar{height:8px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}
 .pfill{height:100%;width:100%;transform:scaleX(0);transform-origin:left;background:var(--accent);transition:transform .2s}
 .ptxt{font-size:12px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
-.summary{margin-top:14px}
+.summary{padding:2px 15px 16px}
 .acc{display:flex;gap:12px;margin-bottom:14px}
 .ratinghdr{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center;
   margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px}
@@ -276,17 +298,33 @@ select#depthSel{width:100%}
 /* ============ move list ============ */
 .movescard{padding:6px 6px 10px}
 .sectlabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 10px 8px}
-.movelist{max-height:360px;overflow-y:auto}
+/* Tall enough to show a real chunk of the game without pushing the rest of the
+   column off screen. */
+.movelist{max-height:min(58vh,470px);overflow-y:auto}
 .mvempty-msg{padding:10px 12px;font-size:13px;color:var(--muted)}
-.mvrow{display:grid;grid-template-columns:34px 1fr 1fr;align-items:stretch;font-family:var(--mono);font-size:13px}
-.mvrow .no{color:var(--muted);display:flex;align-items:center;padding-left:8px;font-size:12px}
-.mv{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:7px;cursor:pointer;margin:1px}
+.mvrow{display:grid;grid-template-columns:36px minmax(0,1fr) minmax(0,1fr);align-items:stretch;
+  font-family:var(--mono);font-size:14px}
+.mvrow .no{color:var(--muted);display:flex;align-items:center;padding-left:8px;font-size:12.5px}
+.mv{display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:7px;cursor:pointer;margin:1px;min-width:0}
 .mv:hover{background:var(--panel2)}
 .mv.active{background:color-mix(in srgb,var(--accent) 22%,transparent);outline:1px solid var(--accent)}
-.mv .san{font-weight:600}
-.mv .cg{margin-left:auto;font-weight:800;font-size:11px}
-.mv .ev{color:var(--muted);font-size:11px;min-width:44px;text-align:right}
+/* The move can shrink and ellipsis; the glyph and eval never shrink, so they
+   can't be overlapped by a long SAN in a narrow column. */
+.mv .san{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv .cg{flex:none;margin-left:auto;font-weight:800;font-size:12px}
+.mv .ev{flex:none;color:var(--muted);font-size:11.5px;min-width:46px;text-align:right}
 .mv.empty{cursor:default}
+/* On a narrow column the eval numbers are the first thing to go — the move and
+   its classification matter more. */
+@media (max-width:420px){.mv .ev{display:none}}
+
+/* ============ accuracy strip (headline, kept beside the board) ============ */
+.accstrip{display:flex;gap:10px;margin-top:12px}
+.accstrip .a{flex:1;min-width:0;text-align:center;padding:8px 4px;border-radius:10px;
+  background:var(--panel2);border:1px solid var(--line)}
+.accstrip .a b{display:block;font-family:var(--mono);font-size:19px;font-weight:700;line-height:1.15}
+.accstrip .a span{display:block;font-size:11px;color:var(--muted);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ============ legend / footer ============ */
 .legendcard{margin-top:16px;padding:8px 16px 16px}

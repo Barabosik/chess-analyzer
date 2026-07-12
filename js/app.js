@@ -1,9 +1,9 @@
-import { Chess } from "../vendor/chess.js?v=6";
-import { Engine } from "./engine.js?v=6";
-import { renderBoard } from "./board.js?v=6";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=6";
+import { Chess } from "../vendor/chess.js?v=8";
+import { Engine } from "./engine.js?v=8";
+import { renderBoard } from "./board.js?v=8";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct } from "./review.js?v=8";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=6";
+  from "./onlinegames.js?v=8";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -59,7 +59,8 @@ const el = {};
  "exploreTxt","engineName","capW","capB","assessBox","assessGlyph","assessHead","assessEval",
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
  "siteSel","userInput","loadUser","acctMsg","gameList",
- "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote"]
+ "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote","accStrip",
+ "impBar","impBody","impBarTxt","impToggle"]
   .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
@@ -242,6 +243,24 @@ async function loadFromHash() {
     }
   } catch (e) { /* fall through to empty board */ }
   return false;
+}
+
+// ---------- import card folding ----------
+// With a game open the import form is just dead weight at the top of the page,
+// pushing the board below the fold. Fold it to one line until it's wanted.
+function setImportOpen(open) {
+  el.impBody.classList.toggle("hidden", !open);
+  el.impBar.classList.toggle("hidden", open);
+}
+function renderImportBar() {
+  const h = state.headers;
+  if (!state.moves.length) { setImportOpen(true); return; }
+  const bits = [];
+  if (h.Result) bits.push(h.Result);
+  if (h.Date) bits.push(h.Date.replace(/\./g, "-"));
+  el.impBarTxt.innerHTML = esc((h.White || "White") + " vs " + (h.Black || "Black")) +
+    (bits.length ? ' <span class="dim">· ' + esc(bits.join(" · ")) + "</span>" : "");
+  setImportOpen(false);
 }
 
 // ---------- share bar ----------
@@ -719,10 +738,12 @@ function loadGame(parsed) {
   state.acct.activeId = null;
   renderGameList();
   renderShareBar();
+  renderImportBar();
   renderHeader();
   renderOpening();
   renderMoveList();
   el.summary.classList.add("hidden");
+  el.accStrip.classList.add("hidden");
   el.reviewBtn.disabled = !state.moves.length || !state.booted;
   goto(0);
 }
@@ -796,6 +817,11 @@ function estRating(acc) {
 function renderSummary() {
   const R = state.review;
   el.summary.classList.remove("hidden");
+  // Headline accuracies stay up beside the board; the breakdown lives below.
+  el.accStrip.innerHTML =
+    '<div class="a"><b>' + R.accWhite + "%</b><span>" + esc(state.headers.White || "White") + "</span></div>" +
+    '<div class="a"><b>' + R.accBlack + "%</b><span>" + esc(state.headers.Black || "Black") + "</span></div>";
+  el.accStrip.classList.remove("hidden");
   el.accWName.textContent = state.headers.White || "White";
   el.accBName.textContent = state.headers.Black || "Black";
   el.accWhite.textContent = R.accWhite + "%";
@@ -842,7 +868,7 @@ function renderReadout() {
     el.readGlyph.style.background = "var(--muted)";
     el.readGlyph.textContent = "○";
     el.readMove.textContent = "Starting position";
-    el.readSub.innerHTML = "Use ← → keys or click a move. Click a piece to explore lines.";
+    el.readSub.innerHTML = "Use ← → keys or click a move. <b>Drag a piece</b> (or click it) to explore lines.";
     return;
   }
   if (state.reviewed) {
@@ -903,7 +929,9 @@ function drawBoard() {
   renderBoard(el.board, fen, {
     flip: state.flip, lastMove, badge, selected: state.selected, targets, arrows,
     onSquareClick: onSquareClick,
+    onSquareDown: onSquareDown,
   });
+  hoverSq = null;                    // the squares were just rebuilt
   renderMaterial(fen);
 }
 
@@ -944,40 +972,131 @@ function goto(ply) {
   restartLive();
 }
 
-// ---------- click-to-move exploration ----------
-function onSquareClick(name) {
-  if (state.reviewing) return;
-  playToken++;
+// ---------- move exploration: click-to-move and drag-and-drop ----------
+
+// Play from -> to on the exploration board. `animate` is off for drags, where
+// the user's hand has already carried the piece across.
+function tryPlayMove(from, to, animate) {
   const fen = currentFen();
   const c = new Chess(fen);
-  const piece = c.get(name);
-  if (state.selected && state.selected !== name) {
-    // attempt a move selected -> name
-    try {
-      const mv = c.move({ from: state.selected, to: name, promotion: "q" });
-      if (mv) {
-        const from = state.selected;
-        if (!state.explore) state.explore = { base: fen, chess: new Chess(fen) };
-        state.explore.chess.move({ from, to: name, promotion: "q" });
-        state.explore.arrow = null;
-        state.selected = null;
-        el.exploreBar.classList.remove("hidden");
-        renderExploreLine();
-        drawBoard();
-        animateMove(from, name);
-        playMoveSound(mv);
-        renderReadout(); renderAssessment(); restartLive();
-        return;
-      }
-    } catch (e) { /* not a legal move; fall through to reselect */ }
-  }
-  // select a piece of the side to move
-  if (piece && piece.color === fen.split(" ")[1]) {
-    state.selected = name;
-  } else {
-    state.selected = null;
-  }
+  let mv;
+  try { mv = c.move({ from, to, promotion: "q" }); }
+  catch (e) { return false; }        // not a legal move
+  if (!mv) return false;
+
+  if (!state.explore) state.explore = { base: fen, chess: new Chess(fen) };
+  state.explore.chess.move({ from, to, promotion: "q" });
+  state.explore.arrow = null;
+  state.selected = null;
+  el.exploreBar.classList.remove("hidden");
+  renderExploreLine();
   drawBoard();
+  if (animate) animateMove(from, to);
+  playMoveSound(mv);
+  renderReadout(); renderAssessment(); restartLive();
+  return true;
+}
+
+function pieceCanMove(fen, square) {
+  const c = new Chess(fen);
+  const piece = c.get(square);
+  return !!piece && piece.color === (fen.split(" ")[1] || "w");
+}
+
+let lastDropAt = 0;   // swallows the click a completed drag leaves behind
+
+function onSquareClick(name) {
+  if (state.reviewing) return;
+  if (Date.now() - lastDropAt < 250) return;
+  playToken++;
+  const fen = currentFen();
+  if (state.selected && state.selected !== name && tryPlayMove(state.selected, name, true)) return;
+  state.selected = pieceCanMove(fen, name) ? name : null;
+  drawBoard();
+}
+
+// ---------- dragging ----------
+// The piece stays in its square and is carried by a transform, so the board
+// keeps its layout; on drop we hand off to the same tryPlayMove as clicking.
+let drag = null;
+let hoverSq = null;
+
+function squareAt(x, y) {
+  const r = el.board.getBoundingClientRect();
+  if (x < r.left || x >= r.right || y < r.top || y >= r.bottom) return null;
+  const dc = Math.floor(((x - r.left) / r.width) * 8);
+  const dr = Math.floor(((y - r.top) / r.height) * 8);
+  const file = state.flip ? 7 - dc : dc;
+  const rank = state.flip ? dr + 1 : 8 - dr;
+  return "abcdefgh"[file] + rank;
+}
+function setHover(name) {
+  if (hoverSq === name) return;
+  const prev = hoverSq && el.board.querySelector('[data-sq="' + hoverSq + '"]');
+  if (prev) prev.classList.remove("over");
+  hoverSq = name;
+  const next = name && el.board.querySelector('[data-sq="' + name + '"]');
+  if (next) next.classList.add("over");
+}
+function carry(x, y) {
+  const { pc, home } = drag;
+  pc.style.transform = "translate(" + (x - home.x) + "px," + (y - home.y) + "px) scale(1.06)";
+}
+
+function onSquareDown(name, ev) {
+  if (ev.button > 0 || state.reviewing || drag) return;   // left button / primary touch only
+  if (!pieceCanMove(currentFen(), name)) return;          // not your piece: leave it to click
+
+  playToken++;
+  state.selected = name;
+  drawBoard();                       // paints the selection and the legal targets
+
+  // drawBoard() rebuilt the squares, so grab the piece element that exists now.
+  const sq = el.board.querySelector('[data-sq="' + name + '"]');
+  const pc = sq && sq.querySelector(".pc");
+  if (!pc) return;
+
+  const r = sq.getBoundingClientRect();
+  drag = { from: name, pc, moved: false, home: { x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+  pc.classList.add("dragging");
+  carry(ev.clientX, ev.clientY);
+  setHover(name);
+
+  window.addEventListener("pointermove", onDragMove);
+  window.addEventListener("pointerup", onDragEnd);
+  window.addEventListener("pointercancel", onDragEnd);
+  ev.preventDefault();               // no text selection / native image drag
+}
+
+function onDragMove(ev) {
+  if (!drag) return;
+  drag.moved = true;
+  carry(ev.clientX, ev.clientY);
+  setHover(squareAt(ev.clientX, ev.clientY));
+}
+
+function onDragEnd(ev) {
+  if (!drag) return;
+  window.removeEventListener("pointermove", onDragMove);
+  window.removeEventListener("pointerup", onDragEnd);
+  window.removeEventListener("pointercancel", onDragEnd);
+
+  const { from, pc, moved } = drag;
+  const to = ev.type === "pointercancel" ? null : squareAt(ev.clientX, ev.clientY);
+  pc.classList.remove("dragging");
+  pc.style.transform = "";
+  setHover(null);
+  drag = null;
+
+  // A press with no travel is just a click-select — keep the piece selected so
+  // the user can finish the move by clicking the destination.
+  if (!moved || !to || to === from) return;
+
+  lastDropAt = Date.now();
+  if (!tryPlayMove(from, to, false)) {
+    state.selected = null;           // dropped somewhere illegal: put it back
+    drawBoard();
+  }
 }
 
 function renderExploreLine() {
@@ -1112,6 +1231,12 @@ function bind() {
     } catch (e) { alert("Invalid FEN:\n" + e.message); }
   };
   $("loadSample").onclick = () => { el.pgnInput.value = SAMPLE_PGN; loadGame(parseGame(SAMPLE_PGN)); };
+
+  el.impToggle.onclick = () => {
+    setImportOpen(true);
+    el.userInput.focus({ preventScroll: true });
+    document.querySelector(".import").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
 
   el.siteSel.value = state.acct.site;
   el.userInput.value = state.acct.user;
