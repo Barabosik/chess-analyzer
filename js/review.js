@@ -1,8 +1,8 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=26";
-import { OPENINGS } from "../vendor/openings.js?v=26";
-import { explainMove } from "./motifs.js?v=26";
+import { Chess } from "../vendor/chess.js?v=28";
+import { OPENINGS } from "../vendor/openings.js?v=28";
+import { explainMove } from "./motifs.js?v=28";
 
 export const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -173,25 +173,63 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
   const onProgress = opts.onProgress || (() => {});
   const signal = opts.signal || {};
 
-  // Start from a clean transposition table, so a review depends only on the game
-  // being reviewed. Otherwise the same game scores differently depending on what
-  // was analysed before it, and labels flip around the class boundaries.
-  if (engine.newGame) await engine.newGame();
+  // One engine, or a pool of them. A review is ~100 INDEPENDENT positions, so it is
+  // embarrassingly parallel: give each engine a slice and they never touch each other.
+  //
+  // Note this is the opposite of asking one engine for Threads=8. That is Lazy SMP —
+  // eight threads piling onto the same short search, thrashing one shared hash table —
+  // and it measured 5-6x SLOWER than a single thread here, as well as non-deterministic.
+  // Separate engines on separate positions share nothing, so they just scale. (Measured:
+  // 12.5s -> 2.6s on six. See docs/NOTES.md.)
+  const engines = Array.isArray(engine) ? engine : [engine];
+
+  // Start every engine from a clean transposition table, so a review depends only on the
+  // game being reviewed. Otherwise the same game scores differently depending on what was
+  // analysed before it, and labels flip around the class boundaries.
+  for (const e of engines) if (e.newGame) await e.newGame();
 
   // Analyse every node once (positions before each move + the final position).
   const fens = moves.map((m) => m.fenBefore);
   fens.push(moves.length ? moves[moves.length - 1].fenAfter : startFen);
 
-  const node = [];
+  const node = new Array(fens.length);
+  const todo = [];
+  let done = 0;
   for (let i = 0; i < fens.length; i++) {
-    if (signal.cancelled) return null;
     const term = terminalNode(fens[i]);   // checkmate / stalemate: the rules decide, not the engine
-    if (term) { node.push(term); onProgress(i + 1, fens.length); continue; }
-    const wantMulti = i < moves.length ? 2 : 1; // second-best only needed before a move
-    const r = await engine.analyse(fens[i], { depth, multipv: wantMulti });
-    node.push(r);
-    onProgress(i + 1, fens.length);
+    if (term) { node[i] = term; onProgress(++done, fens.length); }
+    else todo.push(i);
   }
+
+  // The partition is STATIC — engine k takes every Nth position, always. A dynamic work
+  // queue (whoever is free takes the next one) would be marginally faster and would let
+  // TIMING decide which engine searches which position. Each engine holds its own hash,
+  // so that would make the evaluations depend on the scheduler, and the same game would
+  // review differently twice: exactly the irreproducibility this file already fought once.
+  const N = engines.length;
+  await Promise.all(engines.map(async (e, k) => {
+    for (let j = k; j < todo.length; j += N) {
+      if (signal.cancelled) return;
+      const i = todo[j];
+      const wantMulti = i < moves.length ? 2 : 1; // second-best only needed before a move
+      // Clear the hash before EVERY position, not just once per review.
+      //
+      // This looks like a pure cost and is actually a correctness fix. Position i+1 is
+      // position i plus one move, so its subtree was ALREADY searched as part of
+      // position i's search. Carrying the hash across therefore hands the "after"
+      // position an effectively deeper search than the "before" position it is
+      // compared against — and `loss` is the difference between exactly those two. The
+      // old sequential review had that bias baked in.
+      //
+      // Clearing per position also makes the answer independent of WHO searched it and
+      // in WHAT ORDER, which is what lets the pool return bit-identical results whether
+      // it runs on one engine or eight. Reproducibility stops depending on the schedule.
+      if (e.newGame) await e.newGame();
+      node[i] = await e.analyse(fens[i], { depth, multipv: wantMulti });
+      onProgress(++done, fens.length);
+    }
+  }));
+  if (signal.cancelled) return null;
 
   const out = [];
   const counts = { w: {}, b: {} };

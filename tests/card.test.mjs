@@ -17,6 +17,7 @@ t.ok("no report card is offered before the game is reviewed", await hidden("card
 
 await review(page, "12");
 t.ok("the report card is offered once reviewed", !(await hidden("cardBtn")), "cardBtn still hidden");
+t.ok("and can be copied as well as saved", !(await hidden("cardCopyBtn")), "cardCopyBtn hidden");
 
 // Playwright would otherwise treat the <a download> as a real download.
 page.on("download", (d) => d.cancel().catch(() => {}));
@@ -50,6 +51,28 @@ t.ok("the card is actually drawn, not a blank rectangle", px.colours > 40,
   "distinct colours=" + px.colours);
 t.ok("the eval graph is painted on it", px.pale > 200,
   "pale (white-advantage) pixels=" + px.pale + " of " + px.sampled + " sampled");
+
+// Copy-to-clipboard: the card should be pasteable into a chat without ever becoming a
+// file. Read it back OUT of the clipboard to prove a real PNG landed there.
+await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+await page.click("#cardCopyBtn");
+await page.waitForFunction(() => /Copied|Blocked/.test(document.getElementById("cardCopyBtn").textContent),
+  null, { timeout: 15000 });
+const copyLabel = await page.evaluate(() => document.getElementById("cardCopyBtn").textContent);
+t.ok("copying the card reports success", /Copied/.test(copyLabel), "button says: " + copyLabel);
+
+const pasted = await page.evaluate(async () => {
+  const items = await navigator.clipboard.read();
+  const png = items.find((i) => i.types.includes("image/png"));
+  if (!png) return { ok: false, types: items.flatMap((i) => i.types) };
+  const blob = await png.getType("image/png");
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const magic = [...buf.slice(0, 4)].join(",");     // a PNG starts 137,80,78,71
+  return { ok: true, size: blob.size, magic };
+});
+t.ok("an image/png is actually on the clipboard", pasted.ok, JSON.stringify(pasted));
+t.ok("what was copied is a real PNG", pasted.magic === "137,80,78,71" && pasted.size > 20000,
+  "magic=" + pasted.magic + " bytes=" + pasted.size);
 
 // Loading another game must retract the card: it described the previous one.
 await openImport(page);

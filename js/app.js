@@ -1,12 +1,12 @@
-import { Chess } from "../vendor/chess.js?v=26";
-import { Engine } from "./engine.js?v=26";
-import { renderBoard } from "./board.js?v=26";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=26";
-import { rollup } from "./motifs.js?v=26";
-import { reviewKey, getCached, putCached } from "./cache.js?v=26";
-import { drawCard, cardName } from "./card.js?v=26";
+import { Chess } from "../vendor/chess.js?v=28";
+import { Engine } from "./engine.js?v=28";
+import { renderBoard } from "./board.js?v=28";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=28";
+import { rollup } from "./motifs.js?v=28";
+import { reviewKey, getCached, putCached } from "./cache.js?v=28";
+import { drawCard, cardName } from "./card.js?v=28";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=26";
+  from "./onlinegames.js?v=28";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -43,7 +43,11 @@ const state = {
   headers: {}, moves: [], startFen: DEFAULT_FEN,
   ply: 0, flip: false,
   reviewed: false, reviewing: false, cancel: { cancelled: false },
-  live: true, reviewDepth: 14, liveLines: 3,
+  // Depth 16, not 14. The engine pool made the review ~3.5x faster, and the honest way
+  // to spend that is on depth rather than on finishing sooner: depth is the one lever
+  // that genuinely improves the analysis. A depth-16 review now costs less wall-clock
+  // than a depth-14 one did before the pool.
+  live: true, reviewDepth: 16, liveLines: 3,
   explore: null, selected: null,
   sound: true, opening: null,
   // The Chess.com / Lichess account whose games are listed, and which one is open.
@@ -70,7 +74,7 @@ const el = {};
 ["board","evalFill","evalNum","engineStatus","pgnInput","fenInput","depthSel","linesSel",
  "movelist","summary","counts","motifNote","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
- "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar","phases","phaseRows","cardBtn",
+ "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar","phases","phaseRows","cardBtn","cardCopyBtn",
  "exploreTxt","explainBar","explainTxt","explainPrev","explainNext","explainDone","engineName","capW","capB","assessBox",
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
  "siteSel","userInput","loadUser","acctMsg","gameList",
@@ -862,6 +866,7 @@ function loadGame(parsed) {
   state.explore = null;
   state.selected = null;
   el.cardBtn.classList.add("hidden");   // nothing to report until this game is reviewed
+  el.cardCopyBtn.classList.add("hidden");
   window.__card = null;
   state.opening = detectOpening(parsed.moves);
   state.hasClocks = parsed.moves.some((m) => m.spent != null);
@@ -1460,16 +1465,34 @@ async function runReview() {
   el.reviewBtn.classList.add("cancel");
   el.progress.classList.remove("hidden");
   await state.engine.stopLive();
+
+  // Spin the pool up for this review only. The live engine is the first member, so we
+  // only pay to boot the extras — and the wasm is already compiled and cached by now,
+  // so that costs ~20ms each.
+  const extras = [];
+  for (let i = 1; i < poolSize(); i++) extras.push(new Engine(ENGINE_URL()));
+  await Promise.all(extras.map((e) => e.boot().catch(() => null)));
+  const pool = [state.engine, ...extras.filter((e) => e.booted)];
+
   const total = state.moves.length + 1;
-  const res = await reviewGame(state.engine, state.moves, state.startFen, {
-    depth: state.reviewDepth,
-    onProgress: (d) => {
-      const pct = Math.round((d / total) * 100);
-      el.progressBar.style.transform = "scaleX(" + pct / 100 + ")";
-      el.progressTxt.textContent = "Analyzing " + d + " / " + total + " positions (depth " + state.reviewDepth + ")";
-    },
-    signal: state.cancel,
-  });
+  let res = null;
+  try {
+    res = await reviewGame(pool, state.moves, state.startFen, {
+      depth: state.reviewDepth,
+      onProgress: (d) => {
+        const pct = Math.round((d / total) * 100);
+        el.progressBar.style.transform = "scaleX(" + pct / 100 + ")";
+        el.progressTxt.textContent = "Analyzing " + d + " / " + total + " positions (depth " +
+          state.reviewDepth + (pool.length > 1 ? ", " + pool.length + " engines" : "") + ")";
+      },
+      signal: state.cancel,
+    });
+  } finally {
+    // Always tear the extras down — cancelled, crashed or finished. Leaking six engines
+    // would hand the user back a machine holding hundreds of idle MB.
+    for (const e of extras) e.quit();
+  }
+
   state.reviewing = false;
   el.reviewBtn.textContent = "Analyze game";
   el.reviewBtn.classList.remove("cancel");
@@ -1477,6 +1500,8 @@ async function runReview() {
   el.progressBar.style.transform = "scaleX(0)";
   if (!res) { restartLive(); return; }
   // Only a COMPLETE review is worth remembering — a cancelled one returns null above.
+  // The pool size is deliberately NOT in the cache key: a review is now bit-identical
+  // on one engine or eight, so a cached result stays valid on any machine.
   putCached(key, res);
   applyReview(res, false);
 }
@@ -1488,6 +1513,7 @@ function applyReview(res, fromCache) {
   window.__moves = res.moves;        // test hook: lets the suite read classifications + motifs
   window.__fromCache = fromCache;    // test hook: did this review come back without the engine?
   el.cardBtn.classList.remove("hidden");   // there is a report to share now
+  if (canCopyImages()) el.cardCopyBtn.classList.remove("hidden");
   renderSummary();
   renderMoveList();
   goto(state.ply);
@@ -1495,12 +1521,15 @@ function applyReview(res, fromCache) {
 
 // ---------- shareable report card ----------
 // A PNG of how the game went, for posting. Drawn rather than screenshotted: see js/card.js.
-async function saveCard() {
+async function buildCard() {
   const canvas = document.createElement("canvas");
   drawCard(canvas, { headers: state.headers, moves: state.moves, review: state.review });
   window.__card = { w: canvas.width, h: canvas.height, url: canvas.toDataURL("image/png") };  // test hook
+  return new Promise((res) => canvas.toBlob(res, "image/png"));
+}
 
-  const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+async function saveCard() {
+  const blob = await buildCard();
   if (!blob) return;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1508,8 +1537,35 @@ async function saveCard() {
   a.download = cardName(state.headers);
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  chip(el.cardBtn, "📷 Saved ✓", "📷 Save image");
+  chip(el.cardBtn, "⬇ Saved ✓", "⬇ Save image");
 }
+
+// Straight to the clipboard, so the card can be pasted into a chat without ever
+// becoming a file. The write MUST happen in the click's own task: browsers only honour
+// a clipboard write while the user gesture is still live, so awaiting the blob first and
+// writing after would be rejected on Safari. Hence the Promise is handed to
+// ClipboardItem, which is allowed to resolve later.
+async function copyCard() {
+  if (!canCopyImages()) return;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": buildCard() })]);
+    chip(el.cardCopyBtn, "📋 Copied ✓", "📋 Copy image");
+  } catch (e) {
+    // Some browsers reject a Promise payload; retry with a resolved blob.
+    try {
+      const blob = await buildCard();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      chip(el.cardCopyBtn, "📋 Copied ✓", "📋 Copy image");
+    } catch (e2) {
+      chip(el.cardCopyBtn, "📋 Blocked", "📋 Copy image");
+    }
+  }
+}
+
+// Firefox only grew ClipboardItem recently, and it needs a secure context. Rather than
+// offer a button that silently fails, don't offer it.
+const canCopyImages = () =>
+  typeof ClipboardItem !== "undefined" && !!(navigator.clipboard && navigator.clipboard.write);
 
 // Briefly confirm on a button, then put its label back.
 let chipTimer2 = null;
@@ -1520,9 +1576,24 @@ function chip(btn, on, off) {
 }
 
 // ---------- engine boot ----------
+const ENGINE_URL = () => new URL("../vendor/stockfish/stockfish-18-lite-single.js", import.meta.url);
+
+// How many engines to review with. A review is ~100 INDEPENDENT positions, so it scales
+// across separate single-threaded engines (measured 3.5x on six; see docs/NOTES.md — and
+// note this is the OPPOSITE of Threads>1 inside one engine, which measured 5-6x SLOWER).
+//
+// The pool is built for a review and torn down after it. Each engine is its own WASM
+// instance holding its own hash, so keeping six alive would cost hundreds of MB to sit
+// idle — for a machine that is not reviewing anything. One engine stays, for the live
+// panel; the rest exist only while the progress bar is on screen.
+function poolSize() {
+  const cores = navigator.hardwareConcurrency || 2;
+  const lowMem = navigator.deviceMemory && navigator.deviceMemory <= 4;
+  return Math.max(1, Math.min(lowMem ? 2 : 6, cores - 1));
+}
+
 async function boot() {
-  const url = new URL("../vendor/stockfish/stockfish-18-lite-single.js", import.meta.url);
-  state.engine = new Engine(url);
+  state.engine = new Engine(ENGINE_URL());
   el.engineStatus.textContent = "loading engine (~7 MB)…";
   await state.engine.boot();
   state.booted = true;
@@ -1549,6 +1620,7 @@ function bind() {
 
   el.reviewBtn.onclick = () => { state.reviewing ? (state.cancel.cancelled = true) : runReview(); };
   el.cardBtn.onclick = saveCard;
+  el.cardCopyBtn.onclick = copyCard;
 
   $("loadPgn").onclick = () => {
     const txt = el.pgnInput.value.trim();

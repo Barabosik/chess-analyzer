@@ -189,6 +189,38 @@ boundary and add an ellipsis. And every W/B pair (`97% / 92.5%`, `36/29`) needs 
 passes happily while drawing nothing, so it asserts the image is 2400×1260, has >40
 distinct colours, and actually contains the pale eval-graph region.
 
+## The engine pool, and the bias it uncovered
+
+A review is ~100 **independent** positions, so it is split across a pool of separate
+single-threaded engines — created for the review and torn down after it, because six
+idle WASM instances would hold hundreds of MB for a machine that has stopped reviewing.
+One engine stays behind for the live panel. Measured: **3.5x** (depth 14: 8.8s → 2.5s on
+six; depth 18: 60.7s → 18.6s). The default review depth is therefore **16, not 14** —
+the speedup is better spent on depth than on finishing early.
+
+Two rules hold it together, and both are load-bearing:
+
+**The partition is static.** Engine *k* takes every *N*th position, always. A dynamic
+work queue would be slightly faster and would let the *scheduler* decide which engine
+searches which position — so the evaluations would depend on timing and the same game
+would review differently twice.
+
+**The hash is cleared before every position, not once per review.** This looks like a
+pure cost and is really a correctness fix. Position *i+1* is position *i* plus one move,
+so its subtree was **already searched** as part of position *i*'s search. Carrying the
+hash across handed the "after" position an effectively deeper search than the "before"
+position it is compared against — and `loss` is precisely the difference between those
+two. **The old sequential review was quietly flattering every move that was played.**
+
+Clearing per position removes that bias *and* makes a position's evaluation independent
+of who searched it and in what order. That is what lets one engine and six return
+**bit-identical** results (`tests/pool.test.mjs` asserts exactly this: 0/103 labels,
+evals, best-moves or accuracy differ), which in turn is why pool size is deliberately
+**not** in the cache key — a cached review stays valid on any machine.
+
+Cost of the fix, on the sample game at depth 14: accuracy **95.1/91.8 → 94.2/90.5**.
+That is a correction, not a regression, and it is in the same family as the book-move fix.
+
 ## Threading: measured, and rejected
 
 Multi-threaded Stockfish (`stockfish-18-lite.wasm` + `coi-serviceworker` to fake

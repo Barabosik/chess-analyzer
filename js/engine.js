@@ -151,4 +151,14 @@ export class Engine {
   }
 
   stopLive() { return this.abort(); }
+
+  // Kill the worker outright and release its WASM heap. Used to tear the review pool
+  // back down: six idle engines would hold hundreds of MB for a machine that has
+  // finished reviewing.
+  quit() {
+    try { this.worker.terminate(); } catch (e) { /* already gone */ }
+    this.listeners.clear();
+    this.worker = null;
+    this.booted = false; this._busy = false; this._liveFn = null;
+  }
 }
