@@ -1,10 +1,10 @@
-import { Chess } from "../vendor/chess.js?v=21";
-import { Engine } from "./engine.js?v=21";
-import { renderBoard } from "./board.js?v=21";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=21";
-import { rollup } from "./motifs.js?v=21";
+import { Chess } from "../vendor/chess.js?v=23";
+import { Engine } from "./engine.js?v=23";
+import { renderBoard } from "./board.js?v=23";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=23";
+import { rollup } from "./motifs.js?v=23";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=21";
+  from "./onlinegames.js?v=23";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -48,6 +48,8 @@ const state = {
   // user draws. Cleared on any left interaction or navigation. arrowPreview is
   // the transient one that follows the cursor mid-drag.
   userArrows: [], userMarks: [], arrowPreview: null,
+  // The "Explain" walk-through: { ply, base, line:[uci], sans:[san], idx, eval }.
+  explain: null,
 };
 try {
   state.sound = localStorage.getItem("ca_sound") !== "0";
@@ -61,7 +63,7 @@ const el = {};
  "movelist","summary","counts","motifNote","hdrTitle","hdrMeta",
  "pWName","pBName","pWElo","pBElo","reviewBtn","progress","progressBar","progressTxt","readGlyph",
  "readMove","readSub","live","liveToggle","liveEval","liveDepth","liveLinesBox","exploreBar",
- "exploreTxt","engineName","capW","capB","assessBox",
+ "exploreTxt","explainBar","explainTxt","explainPrev","explainNext","explainDone","engineName","capW","capB","assessBox",
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
  "siteSel","userInput","loadUser","acctMsg","gameList",
  "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote","accStrip",
@@ -505,18 +507,22 @@ function renderAssessment() {
   if (!show) { el.assessBox.classList.add("hidden"); return; }
   const mv = state.moves[state.ply - 1];
   el.assessNote.textContent = coachNote(mv);
-  // Only suggest a better move when the played move actually underperformed one
-  // (mistake/blunder/inaccuracy). Otherwise we'd tell the player their best move
-  // was "excellent" and then point at a WORSE move labelled "best" — the readout
-  // under the board already headlines the move and its class.
-  if (mv.showBetter && mv.bestSan && mv.bestSan !== mv.san) {
+  // Show the engine's move whenever it is GENUINELY better than what was played —
+  // so good/excellent moves still say "★ Qf4 was best", but a move that already
+  // matches (or beats) the engine's own line shows nothing. Comparing mover-POV
+  // evals is what avoids the old paradox of labelling a WORSE move "best": the
+  // played-move eval and the pre-move best-line eval come from different searches
+  // and can cross near equality.
+  const played = moverEval(mv.cpWhite, mv.mateWhite, mv.color);
+  const best = moverEval(mv.bestCpWhite, mv.bestMateWhite, mv.color);
+  if (mv.bestSan && mv.bestSan !== mv.san && best > played + 5) {
     el.assessBest.classList.remove("hidden");
     el.assessBest.classList.add("clickable");
     el.assessBest.innerHTML =
-      '<span class="cg" style="color:var(--best)">★</span> <b>' + mv.bestSan + "</b> was stronger" +
-      '<span class="preview-hint">▶ see it</span>' +
+      '<span class="cg" style="color:var(--best)">★</span> <b>' + mv.bestSan + "</b> was best" +
+      (mv.bestLine && mv.bestLine.length ? '<span class="preview-hint">💡 Explain</span>' : "") +
       '<span class="evchip">' + fmtEval(mv.bestCpWhite, mv.bestMateWhite) + "</span>";
-    el.assessBest.onclick = () => previewBest(mv);
+    el.assessBest.onclick = () => (mv.bestLine && mv.bestLine.length ? enterExplain(mv) : previewBest(mv));
   } else { el.assessBest.classList.add("hidden"); el.assessBest.onclick = null; }
   el.assessBox.classList.remove("hidden");
 }
@@ -537,6 +543,74 @@ function previewBest(mv) {
   animateMove(mv.bestFrom, mv.bestTo);
   playMoveSound({ san: mv.bestSan || "" });
   renderReadout(); renderAssessment(); restartLive();
+}
+
+// ---------- "Explain": walk the engine's best line one move at a time ----------
+// For any move that wasn't the best, press Explain to step through the line the
+// engine recommends — each ‹ › plays / takes back one move on the board, so you
+// can see WHY it's better. "Got it" returns to the review.
+function enterExplain(mv) {
+  if (!mv || !mv.bestLine || !mv.bestLine.length) return;
+  playToken++;
+  const chess = new Chess(mv.fenBefore);
+  const line = [], sans = [];
+  for (const uci of mv.bestLine) {
+    let m;
+    try { m = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4, 5) || undefined }); }
+    catch (e) { break; }
+    if (!m) break;
+    line.push(uci); sans.push(m.san);
+    if (line.length >= 12) break;                 // enough to make the point, still digestible
+  }
+  if (!line.length) return;
+  state.explain = { ply: state.ply, base: mv.fenBefore, line, sans, idx: 1,
+    eval: fmtEval(mv.bestCpWhite, mv.bestMateWhite) };
+  state.selected = null;
+  el.exploreBar.classList.add("hidden");
+  renderExplain(true);
+}
+
+function renderExplain(animate) {
+  const ex = state.explain;
+  if (!ex) return;
+  const chess = new Chess(ex.base);
+  let from = null, to = null;
+  for (let i = 0; i < ex.idx; i++) {
+    const u = ex.line[i];
+    chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4, 5) || undefined });
+    from = u.slice(0, 2); to = u.slice(2, 4);
+  }
+  state.explore = { base: ex.base, chess, arrow: null };   // reuse the exploration board
+  el.explainBar.classList.remove("hidden");
+  const parts = ex.sans.map((s, i) => (i === ex.idx - 1 ? "<b>" + esc(s) + "</b>" : esc(s)));
+  el.explainTxt.innerHTML = '<span class="bulb">💡</span> ' + parts.join(" ") +
+    ' <span class="evchip">' + ex.eval + "</span>";
+  el.explainPrev.disabled = ex.idx <= 1;
+  el.explainNext.disabled = ex.idx >= ex.line.length;
+  drawBoard();
+  if (animate && from) animateMove(from, to);
+  renderReadout(); renderAssessment(); restartLive();
+}
+
+function explainStep(delta) {
+  const ex = state.explain;
+  if (!ex) return;
+  const ni = Math.max(1, Math.min(ex.line.length, ex.idx + delta));
+  if (ni === ex.idx) return;
+  playToken++;
+  const forward = ni > ex.idx;
+  ex.idx = ni;
+  renderExplain(forward);
+  playMoveSound({ san: ex.sans[ex.idx - 1] });
+}
+
+function exitExplain() {
+  const ply = state.explain ? state.explain.ply : state.ply;
+  state.explain = null;
+  state.explore = null;
+  el.explainBar.classList.add("hidden");
+  el.exploreBar.classList.add("hidden");
+  goto(ply);
 }
 
 // Play the NEXT single move of an engine line (one click = one move). The engine
@@ -891,6 +965,12 @@ function renderSummary() {
   }
 }
 
+// A single comparable number from the mover's point of view, so "is the engine's
+// move actually better than mine?" is one comparison. Mate scores dominate cp.
+function moverEval(cpWhite, mateWhite, color) {
+  const white = mateWhite != null ? (mateWhite > 0 ? 1e6 - mateWhite : -1e6 - mateWhite) : (cpWhite || 0);
+  return color === "w" ? white : -white;
+}
 function fmtEvalBar(cp, mate) {
   if (mate != null) return "M" + Math.abs(mate);
   if (Math.abs(cp || 0) >= MATE_CP) return "#";
@@ -904,6 +984,13 @@ function updateEvalBar(cp, mate) {
 }
 
 function renderReadout() {
+  if (state.explain) {
+    el.readGlyph.style.background = "var(--best)";
+    el.readGlyph.textContent = "★";
+    el.readMove.textContent = "The best line";
+    el.readSub.innerHTML = "Step through it with <b>‹ ›</b>. Press <b>✓ Got it</b> to return.";
+    return;
+  }
   if (state.explore) {
     el.readGlyph.style.background = "var(--accent)";
     el.readGlyph.textContent = "⌕";
@@ -1026,6 +1113,7 @@ function legalTargets(fen, sq) {
 function goto(ply) {
   const prev = state.ply;
   clearUserDrawings();          // annotations belong to the position you drew them on
+  if (state.explain) { state.explain = null; el.explainBar.classList.add("hidden"); }
   playToken++;
   state.ply = Math.max(0, Math.min(state.moves.length, ply));
   state.selected = null;
@@ -1363,6 +1451,9 @@ function bind() {
   // Right-clicking the board draws arrows instead of opening the context menu.
   el.board.addEventListener("contextmenu", (e) => e.preventDefault());
   $("returnGame").onclick = returnToGame;
+  el.explainPrev.onclick = () => explainStep(-1);
+  el.explainNext.onclick = () => explainStep(1);
+  el.explainDone.onclick = exitExplain;
 
   el.reviewBtn.onclick = () => { state.reviewing ? (state.cancel.cancelled = true) : runReview(); };
 
@@ -1449,6 +1540,13 @@ function bind() {
 
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+    // While explaining, the arrows drive the walk-through, not the game.
+    if (state.explain) {
+      if (e.key === "ArrowLeft") { explainStep(-1); e.preventDefault(); }
+      else if (e.key === "ArrowRight") { explainStep(1); e.preventDefault(); }
+      else if (e.key === "Escape" || e.key === "Enter") { exitExplain(); e.preventDefault(); }
+      return;
+    }
     if (e.key === "ArrowLeft") { $("bPrev").click(); e.preventDefault(); }
     else if (e.key === "ArrowRight") { $("bNext").click(); e.preventDefault(); }
     else if (e.key === "Home") { $("bStart").click(); e.preventDefault(); }

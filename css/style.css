@@ -226,6 +226,16 @@ select#depthSel{width:100%}
 .expl-label{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);flex:none}
 .expl-txt{font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mini{padding:5px 10px;font-size:12px}
+/* the "Explain" walk-through bar */
+.explainbar{display:flex;align-items:center;gap:8px;margin-top:11px;padding:7px 9px;border-radius:10px;
+  background:var(--panel2);border:1px solid color-mix(in srgb,var(--best) 40%,var(--line))}
+.explain-txt{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.explain-txt b{color:var(--ink)}
+.explain-txt .bulb{filter:saturate(1.2)}
+.explain-txt .evchip{margin-left:4px}
+.stepbtn{flex:none;width:34px;height:32px;font-size:17px;line-height:1;padding:0;border-radius:8px}
+.stepbtn:disabled{opacity:.35;cursor:default}
+.mini.done{flex:none;font-weight:600;background:var(--best);color:#fff;border-color:transparent}
 
 .readout{margin-top:11px;padding:11px 13px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);
   display:flex;align-items:center;gap:12px;min-height:56px}

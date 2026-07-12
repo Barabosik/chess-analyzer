@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=21" />
+  <link rel="stylesheet" href="css/style.css?v=23" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -118,6 +118,14 @@
           <button id="returnGame" class="mini">Return to game</button>
         </div>
 
+        <!-- Guided walk-through of the engine's best line (the "Explain" button). -->
+        <div class="explainbar hidden" id="explainBar">
+          <button class="stepbtn" id="explainPrev" title="Back">‹</button>
+          <span class="explain-txt" id="explainTxt"></span>
+          <button class="stepbtn" id="explainNext" title="Forward">›</button>
+          <button id="explainDone" class="mini done">✓ Got it</button>
+        </div>
+
         <div class="readout">
           <div class="cglyph" id="readGlyph">○</div>
           <div class="rtxt">
@@ -226,6 +234,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=21"></script>
+  <script type="module" src="js/app.js?v=23"></script>
 </body>
 </html>

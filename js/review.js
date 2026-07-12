@@ -1,8 +1,8 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=21";
-import { OPENINGS } from "../vendor/openings.js?v=21";
-import { explainMove } from "./motifs.js?v=21";
+import { Chess } from "../vendor/chess.js?v=23";
+import { OPENINGS } from "../vendor/openings.js?v=23";
+import { explainMove } from "./motifs.js?v=23";
 
 export const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -303,6 +303,9 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
       bestPromo: bookEntry || !bestUci ? null : bestUci.slice(4, 5) || null,
       bestCpWhite: evalWhite(before.best),       // eval if the best move had been played
       bestMateWhite: before.best ? before.best.mate : null,
+      // the engine's principal variation from before the move (UCI), so "Explain"
+      // can walk the best line move by move
+      bestLine: bookEntry || !before.best ? null : (before.best.pv || null),
       showBetter: !bookEntry && (cls === "inaccuracy" || cls === "mistake" || cls === "blunder"),
       motif: bookEntry ? null : motif,
       // only positions the book actually names carry an opening name; bridged
