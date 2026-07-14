@@ -1,15 +1,15 @@
-import { Chess } from "../vendor/chess.js?v=32";
-import { Engine } from "./engine.js?v=32";
-import { renderBoard } from "./board.js?v=32";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=32";
-import { rollup } from "./motifs.js?v=32";
-import { reviewKey, getCached, putCached } from "./cache.js?v=32";
-import { drawCard, cardName } from "./card.js?v=32";
-import { glyphSvg } from "./glyphs.js?v=32";
+import { Chess } from "../vendor/chess.js?v=33";
+import { Engine } from "./engine.js?v=33";
+import { renderBoard } from "./board.js?v=33";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=33";
+import { rollup } from "./motifs.js?v=33";
+import { reviewKey, getCached, putCached } from "./cache.js?v=33";
+import { drawCard, cardName } from "./card.js?v=33";
+import { glyphSvg } from "./glyphs.js?v=33";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=32";
-import { lookupPosition, RATING_BANDS } from "./explorer.js?v=32";
-import { scanBoard, gridToFen } from "./boardscan.js?v=32";
+  from "./onlinegames.js?v=33";
+import { lookupPosition, RATING_BANDS } from "./explorer.js?v=33";
+import { scanBoard, gridToFen } from "./boardscan.js?v=33";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -1032,7 +1032,12 @@ function renderSummary() {
   // long list of caveats — the ratingnote below the breakdown repeats the short one).
   // A band, not a lone number — one game can't pin a rating (see estimateElo / NOTES),
   // so the range and the "provisional" tag own that instead of hiding it in a footnote.
-  const est = (v) => (v == null ? "" :
+  // Suppressed entirely for a game against the bot: the opponent's strength is one we
+  // SET (≈400), and beating a bot that hangs pieces makes anyone's play read strong, so
+  // the number would be pure noise. Detected from the bot's header name.
+  const botGame = /Stockfish \(≈/.test(state.headers.White || "") ||
+                  /Stockfish \(≈/.test(state.headers.Black || "");
+  const est = (v) => (v == null || botGame ? "" :
     '<span class="est">game rating ≈ ' + v.lo + "–" + v.hi +
     ' <span class="prov">provisional</span></span>');
   el.accStrip.innerHTML =
@@ -1882,11 +1887,15 @@ async function handleScanFile(file) {
       const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url;
     });
     const scan = await scanBoard(img);
-    const note = scan.occupied
-      ? "Read " + scan.occupied + " pieces (confidence " + Math.round(scan.confidence * 100) +
-        "%). Fix any square it got wrong, set who's to move, then analyze."
-      : "Couldn't find pieces — the image should be cropped to just the 8×8 board. Place them yourself, or try another screenshot.";
-    openEditor(scan.grid, note);
+    if (!scan.plausible) {
+      // A garbage read (uncropped screenshot, a piece set we don't have): don't prefill
+      // 64 wrong squares — start empty and say plainly what a readable image looks like.
+      openEditor(emptyGrid(),
+        "Couldn't read that image. It needs to be cropped to JUST the 8×8 board — no app window, coordinates ring, or borders. Try a tighter crop, or build the position by hand below.");
+      return;
+    }
+    openEditor(scan.grid,
+      "Read " + scan.occupied + " pieces. Fix any square it got wrong, set who's to move, then analyze.");
   } catch (e) {
     openEditor(emptyGrid(), "Couldn't read that image. Set the position up by hand, then analyze.");
   } finally {

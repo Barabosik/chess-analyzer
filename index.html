@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=32" />
+  <link rel="stylesheet" href="css/style.css?v=33" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -106,7 +106,7 @@
             <label class="filebtn">📷 Scan a screenshot<input type="file" id="scanFile" accept="image/*" hidden /></label>
             <button id="scanBtn" class="mini">Set up by hand</button>
           </div>
-          <div class="scanhint">A screenshot cropped to a board (Lichess / Chess.com). It's read as best we can, then you confirm on an editable board.</div>
+          <div class="scanhint">Crop the screenshot to <b>just the 8×8 board</b> (no app window or coordinates) — a Lichess/Chess.com board reads best. It's read as best we can, then you confirm and fix on an editable board.</div>
         </div>
       </div>
       </div><!-- /impBody -->
@@ -347,6 +347,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=32"></script>
+  <script type="module" src="js/app.js?v=33"></script>
 </body>
 </html>

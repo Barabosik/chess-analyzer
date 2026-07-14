@@ -118,6 +118,16 @@ curve, so a consistent game reads tight and an erratic one wide. A half-width fl
 (variance falls with N), which is the pending "report card across games" work. Cache
 key bumped v2→v3 because `est` changed shape from a number to a band.
 
+**Not shown at all for a game against the bot** (2026-07, after a ≈400 bot game read
+"1850–2500"). Two reasons compound there. The opponent's strength is one we SET, so
+estimating it is absurd; and beating a bot that hangs pieces is easy to do accurately, so
+the winner reads strong too. Worse, win%-loss SATURATES once a side is completely
+winning or losing — each further move can only lose a sliver of an already-near-zero
+win%, so blunders in a decided game stop counting and accuracy (hence the rating)
+inflates. `renderSummary` detects the bot from its header name (`Stockfish (≈…)`) and
+omits the band. `tests/rating.test.mjs` reviews a decisive bot-headed game and asserts
+accuracy shows but no band does.
+
 ## Move motifs: naming why a move was bad (`js/motifs.js`)
 
 A blunder used to say the same generic sentence every time. `explainMove` now names
@@ -407,10 +417,21 @@ Two colour rules were each a wrong read first, found by the render-and-read-back
   fill, yet a black piece has almost no light fill. So colour is white when
   `lightCount * 4 >= darkCount` (a 1:4 ratio), not when light simply outweighs dark.
 
-It assumes a clean digital board sliced evenly into 8×8, white at the bottom. It does not
-try to auto-crop, detect orientation, read the side to move, or handle a photo of a
-wooden set. All of that is the editor's job, which is the point: the scan only has to get
-most squares close.
+It assumes a clean digital board, white at the bottom. It trims a SOLID margin first
+(`autoTrim` scans in from each edge while the whole row/column is one flat colour and
+stops at the board's alternating edge), so a screenshot with a plain surround works; it
+does not detect a board inside busy app chrome, read orientation, or read the side to
+move. All of that is the editor's job, which is the point: the scan only has to get most
+squares close.
+
+**It refuses a nonsense read rather than prefilling it.** The first real paste was an
+uncropped screenshot: every one of 64 cells caught fragments of the misaligned grid, so
+all 64 read "occupied" with near-random silhouette matches (2% confidence), and the
+editor opened with 64 wrong pieces to clear. A position has at most 32 pieces and never
+fills the board, so `scanBoard` now returns `plausible` (`2 ≤ occupied ≤ 32` and
+confidence ≥ 0.10); an implausible read opens the editor EMPTY with a plain "crop to just
+the board" message instead. The honest limit stands: without real in-image board
+detection it needs a tight crop, and it says so.
 
 **The confirm-board is the reliable half, and is useful on its own** — pick a piece, click
 squares, set who is to move, analyze; the first way to build an arbitrary position without

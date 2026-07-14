@@ -121,8 +121,31 @@ function iou(a, b) {
   return uni ? inter / uni : 0;
 }
 
-// Scan a source (canvas / image / ImageBitmap) assumed to be a board cropped to its 8×8.
-// Returns { grid:8×8 of FEN chars|null (rank 8 first), fen, confidence, occupied }.
+// Trim a solid-colour margin around the board (a screenshot often has one). Scans in
+// from each edge while the whole row/column is one flat colour, and stops at the first
+// row/column that varies — which, for a board, is its alternating edge. Non-uniform
+// surroundings (app chrome, coordinates) won't trim; the result is then implausible and
+// the caller refuses it rather than reading noise. Falls back to the whole image if the
+// trim collapses.
+function autoTrim(px, W, H) {
+  const at = (x, y) => { const i = (y * W + x) * 4; return [px[i], px[i + 1], px[i + 2]]; };
+  const close = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) < 36;
+  const stepX = Math.max(1, W >> 6), stepY = Math.max(1, H >> 6);
+  const rowFlat = (y) => { const c = at(0, y); for (let x = stepX; x < W; x += stepX) if (!close(at(x, y), c)) return false; return true; };
+  const colFlat = (x) => { const c = at(x, 0); for (let y = stepY; y < H; y += stepY) if (!close(at(x, y), c)) return false; return true; };
+  let top = 0, bottom = H - 1, left = 0, right = W - 1;
+  while (top < bottom && rowFlat(top)) top++;
+  while (bottom > top && rowFlat(bottom)) bottom--;
+  while (left < right && colFlat(left)) left++;
+  while (right > left && colFlat(right)) right--;
+  const w = right - left + 1, h = bottom - top + 1;
+  if (w < W * 0.3 || h < H * 0.3) return { x: 0, y: 0, w: W, h: H };
+  return { x: left, y: top, w, h };
+}
+
+// Scan a source (canvas / image / ImageBitmap). A solid margin is trimmed first; what
+// remains is assumed to be the 8×8 board, white at the bottom.
+// Returns { grid:8×8 of FEN chars|null (rank 8 first), fen, confidence, occupied, plausible }.
 export async function scanBoard(source) {
   const templates = await loadTemplates();
   const W = source.width || source.videoWidth, H = source.height || source.videoHeight;
@@ -130,14 +153,15 @@ export async function scanBoard(source) {
   cv.width = W; cv.height = H;
   cv.getContext("2d").drawImage(source, 0, 0, W, H);
   const px = cv.getContext("2d").getImageData(0, 0, W, H).data;
+  const crop = autoTrim(px, W, H);
 
   const grid = [];
   let confSum = 0, occupied = 0;
   for (let r = 0; r < 8; r++) {
     const row = [];
     for (let c = 0; c < 8; c++) {
-      const x0 = Math.round(c * W / 8), y0 = Math.round(r * H / 8);
-      const w = Math.round((c + 1) * W / 8) - x0, h = Math.round((r + 1) * H / 8) - y0;
+      const x0 = crop.x + Math.round(c * crop.w / 8), y0 = crop.y + Math.round(r * crop.h / 8);
+      const w = crop.x + Math.round((c + 1) * crop.w / 8) - x0, h = crop.y + Math.round((r + 1) * crop.h / 8) - y0;
       const cell = readCell(px, x0, y0, w, h, W);
       if (cell.coverage < OCC_MIN) { row.push(null); continue; }
       // Best-matching silhouette = piece type.
@@ -153,11 +177,17 @@ export async function scanBoard(source) {
     }
     grid.push(row);
   }
+  const confidence = occupied ? confSum / occupied : 0;
   return {
     grid,
     fen: gridToFen(grid),
     occupied,
-    confidence: occupied ? confSum / occupied : 0,
+    confidence,
+    // A real position has at most 32 pieces and never fills the board; a garbage read (an
+    // uncropped screenshot, a piece set we don't have) fills most squares with barely-
+    // distinguishable matches. The caller refuses an implausible result rather than
+    // prefilling nonsense the user then has to clear 64 squares of.
+    plausible: occupied >= 2 && occupied <= 32 && confidence >= 0.10,
   };
 }
 

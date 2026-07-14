@@ -8,14 +8,16 @@ import { suite, open } from "./lib/harness.mjs";
 const t = suite("boardscan");
 const { browser, page, errors } = await open();
 
-// Render a FEN board field to a canvas and hand it to scanBoard, in-page. Returns the
-// board field scanBoard reconstructs.
-async function scanFen(boardField, { light = "#f0d9b5", dark = "#b58863" } = {}) {
-  return page.evaluate(async ({ boardField, light, dark }) => {
-    const S = 64;
+// Render a FEN board field to a canvas and hand it to scanBoard, in-page. `margin` draws
+// a solid surround the recognizer must trim away first. Returns the board field
+// scanBoard reconstructs.
+async function scanFen(boardField, { light = "#f0d9b5", dark = "#b58863", margin = 0, surround = "#312e2b" } = {}) {
+  return page.evaluate(async ({ boardField, light, dark, margin, surround }) => {
+    const S = 64, off = margin;
     const cv = document.createElement("canvas");
-    cv.width = cv.height = S * 8;
+    cv.width = cv.height = S * 8 + margin * 2;
     const ctx = cv.getContext("2d");
+    if (margin) { ctx.fillStyle = surround; ctx.fillRect(0, 0, cv.width, cv.height); }
     const grid = boardField.split("/").map((fr) => {
       const arr = [];
       for (const ch of fr) { if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) arr.push(null); else arr.push(ch); }
@@ -24,17 +26,17 @@ async function scanFen(boardField, { light = "#f0d9b5", dark = "#b58863" } = {})
     const load = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
     for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
       ctx.fillStyle = (r + c) % 2 === 0 ? light : dark;
-      ctx.fillRect(c * S, r * S, S, S);
+      ctx.fillRect(off + c * S, off + r * S, S, S);
       const p = grid[r][c];
       if (p) {
         const img = await load("vendor/pieces/cburnett/" + (p === p.toUpperCase() ? "w" : "b") + p.toUpperCase() + ".svg");
-        ctx.drawImage(img, c * S, r * S, S, S);
+        ctx.drawImage(img, off + c * S, off + r * S, S, S);
       }
     }
     const { scanBoard } = await import("/js/boardscan.js?v=32");
     const out = await scanBoard(cv);
     return out.fen.split(" ")[0];
-  }, { boardField, light, dark });
+  }, { boardField, light, dark, margin, surround });
 }
 
 // Count how many of the 64 squares two board fields agree on.
@@ -62,6 +64,29 @@ t.ok("reads a sparse endgame (>=62/64 squares)", agree(gotEg, EG) >= 62,
 const gotDark = await scanFen(START, { light: "#b8b8b8", dark: "#6d6d6d" });
 t.ok("survives a greyer board theme (>=60/64)", agree(gotDark, START) >= 60,
   "got " + gotDark + " (" + agree(gotDark, START) + "/64)");
+
+// --- a solid margin around the board is trimmed away before slicing ------------------
+const gotMargin = await scanFen(START, { margin: 60 });
+t.ok("auto-trims a solid margin, then reads the board (>=60/64)", agree(gotMargin, START) >= 60,
+  "got " + gotMargin + " (" + agree(gotMargin, START) + "/64)");
+
+// --- a non-board image is refused, not read as 64 random pieces ----------------------
+const garbage = await page.evaluate(async () => {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 512;
+  const ctx = cv.getContext("2d");
+  const im = ctx.createImageData(512, 512);
+  for (let i = 0; i < im.data.length; i += 4) {
+    im.data[i] = Math.random() * 255; im.data[i + 1] = Math.random() * 255;
+    im.data[i + 2] = Math.random() * 255; im.data[i + 3] = 255;
+  }
+  ctx.putImageData(im, 0, 0);
+  const { scanBoard } = await import("/js/boardscan.js?v=32");
+  const out = await scanBoard(cv);
+  return { plausible: out.plausible, occupied: out.occupied };
+});
+t.ok("refuses a garbage (non-board) image", garbage.plausible === false,
+  "plausible=" + garbage.plausible + " occupied=" + garbage.occupied);
 
 t.ok("no uncaught page errors", errors.length === 0, errors.join("; ") || "clean");
 
