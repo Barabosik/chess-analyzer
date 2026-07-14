@@ -61,7 +61,9 @@ function fnv1a(s) {
 export function reviewKey({ startFen, moves, depth, engine }) {
   const game = startFen + "|" + moves.map((m) => m.uci).join("");
   // v2: reviews grew fields (est, afterLine, sacPiece, onlyGap) that v1 entries lack.
-  return "v2|" + (engine || "?") + "|d" + depth + "|" + fnv1a(game) + "|" + moves.length;
+  // v3: `est` changed shape from a number to a {elo,lo,hi} band; v2 entries would
+  //     render `undefined–undefined`, so they must miss and re-run.
+  return "v3|" + (engine || "?") + "|d" + depth + "|" + fnv1a(game) + "|" + moves.length;
 }
 
 export async function getCached(key) {

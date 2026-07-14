@@ -103,6 +103,21 @@ ratingnote under the breakdown says plainly that one game misses by several hund
 points either way. A clean game by a 900 will read 2000+; that is the feature's
 honest limit, and chess.com's equivalent does the same.
 
+**Then shown as a band, not a lone number** (2026-07, after "played like 2k" feedback
+on an ordinary game). The complaint was correct, and it is exactly the limit above: an
+ordinary quiet game averages ~3% win% lost per move, and 3% maps to ~2000 whoever
+played it, so one number reads as a verdict the data cannot support. Nothing here is
+recalibratable. There is no corpus stored in the repo to re-fit against, and even the
+best possible fit still misses by ~850, so moving the centre down would only guess, and
+would under-rate strong play in the bargain. The honest lever is uncertainty, not a
+lower number. `estimateElo` now returns `{elo, lo, hi}`, where the band is the game's
+OWN spread: the standard error of its mean loss (`std/sqrt(n)`) mapped back through the
+curve, so a consistent game reads tight and an erratic one wide. A half-width floor of
+200 Elo keeps even a flawless-looking game from reading as a point. It shows as
+"≈ lo–hi · provisional". The genuinely trustworthy number is a multi-game average
+(variance falls with N), which is the pending "report card across games" work. Cache
+key bumped v2→v3 because `est` changed shape from a number to a band.
+
 ## Move motifs: naming why a move was bad (`js/motifs.js`)
 
 A blunder used to say the same generic sentence every time. `explainMove` now names
@@ -175,10 +190,25 @@ Two things here are load-bearing:
   full strength before every search. Without both halves, a review run after a bot
   game would be quietly scored by a 1200-rated engine — every evaluation subtly
   wrong and nothing to say why.
-- **UCI_Elo floors at 1320**, so the sub-1300 settings map to Skill Level
-  (600→0, 800→2, 1000→4, 1200→6) with short movetimes — a "beginner" that thinks
-  for ten seconds reads as strong even when it isn't. The ≈-labels are estimates,
-  not calibrated ratings.
+- **UCI_Elo floors at 1320**, so the sub-1300 settings fall back to Skill Level with
+  short movetimes — a "beginner" that thinks for ten seconds reads as strong even when
+  it isn't. The ≈-labels are estimates, not calibrated ratings.
+
+**Skill Level 0 is not a beginner** (2026-07, after a "600 felt like 900-1k" report).
+That was right: Stockfish's weakest setting still plays about 1000 to 1350, because
+Skill Level only adds noise to move choice, it never hangs a piece the way a real
+beginner does, and `UCI_Elo` cannot go below 1320. So the old "600 / 800" labels were
+fiction. Below club strength the bot now drops a genuine blunder some fraction of the
+time (`blunder` in `BOT_LEVELS`): with that probability `botMove` plays a uniformly
+random legal move (`randomLegalMove`) instead of the engine's pick. A random move at
+rate p strictly lowers move quality, which is the one thing that is certain here; the
+rates (0.35 at ≈400 down to 0.05 at ≈1000) are chosen, not calibrated, because a bot's
+true Elo can only be read from many games, the same honesty as the rating curve. Two
+guards matter: the randomness lives ONLY in `botMove`, and `analyse`/`live` still
+assert full strength before every search, so no evaluation is ever weakened; and the
+random move is instant, which also reads right, since a beginner's blunder comes fast
+rather than after a long think. The ladder gained a sub-600 rung (≈400) so a true
+beginner has something to play.
 
 ## Interface decisions that were bugs in disguise
 

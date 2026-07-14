@@ -72,10 +72,12 @@ const strip = await page.evaluate(() => {
 ok("accuracy headline stays up top next to the board", !strip.hidden && /%/.test(strip.text),
   JSON.stringify(strip.text));
 
-// Each side gets its rough game-rating estimate under the accuracy.
+// Each side gets its rough game-rating estimate under the accuracy — as a provisional
+// BAND (lo–hi), not a lone number, since one game cannot pin a rating.
 const est = await page.evaluate(() =>
   [...document.querySelectorAll("#accStrip .a .est")].map((e) => e.textContent));
-ok("both players get a game-rating estimate", est.length === 2 && est.every((t) => /≈ \d{3,4}/.test(t)),
+ok("both players get a provisional game-rating band",
+  est.length === 2 && est.every((t) => /≈ \d{3,4}–\d{3,4}/.test(t) && /provisional/i.test(t)),
   est.join(" | ") || "none");
 
 // The breakdown marks are SVGs (font glyphs sat off-centre, each in its own way).

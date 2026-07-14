@@ -1,13 +1,13 @@
-import { Chess } from "../vendor/chess.js?v=29";
-import { Engine } from "./engine.js?v=29";
-import { renderBoard } from "./board.js?v=29";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=29";
-import { rollup } from "./motifs.js?v=29";
-import { reviewKey, getCached, putCached } from "./cache.js?v=29";
-import { drawCard, cardName } from "./card.js?v=29";
-import { glyphSvg } from "./glyphs.js?v=29";
+import { Chess } from "../vendor/chess.js?v=30";
+import { Engine } from "./engine.js?v=30";
+import { renderBoard } from "./board.js?v=30";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=30";
+import { rollup } from "./motifs.js?v=30";
+import { reviewKey, getCached, putCached } from "./cache.js?v=30";
+import { drawCard, cardName } from "./card.js?v=30";
+import { glyphSvg } from "./glyphs.js?v=30";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=29";
+  from "./onlinegames.js?v=30";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -1022,7 +1022,11 @@ function renderSummary() {
   // Headline accuracies stay up beside the board; the breakdown lives below.
   // Each side also gets its rough game-rating estimate (see estimateElo for the
   // long list of caveats — the ratingnote below the breakdown repeats the short one).
-  const est = (v) => (v == null ? "" : '<span class="est">game rating ≈ ' + v + "</span>");
+  // A band, not a lone number — one game can't pin a rating (see estimateElo / NOTES),
+  // so the range and the "provisional" tag own that instead of hiding it in a footnote.
+  const est = (v) => (v == null ? "" :
+    '<span class="est">game rating ≈ ' + v.lo + "–" + v.hi +
+    ' <span class="prov">provisional</span></span>');
   el.accStrip.innerHTML =
     '<div class="a"><b>' + R.accWhite + "%</b><span>" + esc(state.headers.White || "White") + "</span>" +
       est(R.est && R.est.w) + "</div>" +
@@ -1461,12 +1465,19 @@ function returnToGame() {
 // taped shut until it ends: no eval bar, no live lines, no review button.
 
 // The engine's UCI_Elo floor is 1320, so the club-strength settings use it directly
-// and the lower ones fall back to Skill Level. Weak settings also answer fast — a
-// beginner bot that thinks for seconds reads as strong even when it isn't.
+// and the lower ones fall back to Skill Level. But Skill Level 0 is not a beginner —
+// it still plays ~1000-1350 (it adds move-noise, it does not hang pieces), which is
+// why a "600" bot felt like a 1000. So below club strength the bot ALSO plays a
+// random legal move some fraction of the time (`blunder`) — an actual blunder, the
+// only way under Stockfish's floor. The rate is chosen, not calibrated (measuring a
+// bot's Elo needs many games); what is certain is the direction — a random move at
+// rate p strictly lowers move quality. The ≈ labels are estimates, as before.
+// Weak settings also answer fast: nobody wants a 600 that thinks for seconds.
 const BOT_LEVELS = [
-  { label: "≈ 600 · just the rules", elo: 600, skill: 0, mt: 120 },
-  { label: "≈ 800 · casual", elo: 800, skill: 2, mt: 150 },
-  { label: "≈ 1000 · improving", elo: 1000, skill: 4, mt: 200 },
+  { label: "≈ 400 · learning the moves", elo: 400, skill: 0, mt: 100, blunder: 0.35 },
+  { label: "≈ 600 · beginner", elo: 600, skill: 0, mt: 120, blunder: 0.22 },
+  { label: "≈ 800 · casual", elo: 800, skill: 0, mt: 150, blunder: 0.12 },
+  { label: "≈ 1000 · improving", elo: 1000, skill: 3, mt: 200, blunder: 0.05 },
   { label: "≈ 1200 · club beginner", elo: 1200, skill: 6, mt: 250 },
   { label: "≈ 1400 · club player", elo: 1400, uciElo: 1400, mt: 300 },
   { label: "≈ 1700 · strong club", elo: 1700, uciElo: 1700, mt: 350 },
@@ -1537,6 +1548,17 @@ function startBot() {
   if (color === "b") botMove();
 }
 
+// A uniformly random legal move (UCI), for the weak-bot blunder path. Reads the
+// position only — never the engine — so it is instant, which also reads right: a
+// beginner's blunder comes fast, not after a long think.
+function randomLegalMove(fen) {
+  const c = new Chess(fen);
+  const ms = c.moves({ verbose: true });
+  if (!ms.length) return null;
+  const m = ms[Math.floor(Math.random() * ms.length)];
+  return m.from + m.to + (m.promotion || "");
+}
+
 async function botMove() {
   const bot = state.bot;
   if (!bot || bot.over || bot.thinking) return;
@@ -1545,7 +1567,13 @@ async function botMove() {
   const fen = state.moves.length ? state.moves[state.moves.length - 1].fenAfter : state.startFen;
   let uci = null;
   try {
-    uci = await state.engine.play(fen, { uciElo: bot.lvl.uciElo, skill: bot.lvl.skill, movetime: bot.lvl.mt });
+    // Beginner tiers drop a real blunder some fraction of the time (a random legal
+    // move), because Skill 0 alone floors around 1000 and never hangs a piece. The
+    // randomness lives ONLY here, in bot play — analyse()/live() still assert full
+    // strength before every search, so no evaluation is ever weakened.
+    const bl = bot.lvl.blunder || 0;
+    if (bl > 0 && Math.random() < bl) uci = randomLegalMove(fen);
+    if (!uci) uci = await state.engine.play(fen, { uciElo: bot.lvl.uciElo, skill: bot.lvl.skill, movetime: bot.lvl.mt });
   } catch (e) { /* a dead engine just never answers; the game simply stalls visibly */ }
   bot.thinking = false;
   if (state.bot !== bot || bot.over) return;    // resigned / abandoned while it thought
@@ -1900,7 +1928,7 @@ function bind() {
     o.textContent = l.label;
     el.botElo.appendChild(o);
   });
-  el.botElo.value = "3";   // ≈1200 — a humble default beats an insulting one
+  el.botElo.value = "4";   // ≈1200 — a humble default beats an insulting one
   el.botStart.onclick = startBot;
   el.botRematch.onclick = () => { if (state.mode === "bot") startBot(); };
   el.botResign.onclick = () => {

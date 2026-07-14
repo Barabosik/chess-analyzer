@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=29" />
+  <link rel="stylesheet" href="css/style.css?v=30" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -284,10 +284,12 @@
           <div class="counts" id="counts"></div>
           <p class="motifnote hidden" id="motifNote"></p>
           <div class="ratingnote">
-            The <b>game rating</b> is a rough read of this one game, not the player's Elo:
-            checked against 64 real games, single-game estimates miss the true rating by
-            several hundred points either way (a quiet game reads too strong, a sharp one
-            too weak). Trends across many games mean something; one number does not.
+            The <b>game rating</b> is a rough read of this one game, not the player's Elo,
+            so it shows as a <b>provisional band</b> rather than a single number. Checked
+            against 64 real games, single-game estimates miss the true rating by several
+            hundred points either way (a quiet game reads too strong, a sharp one too
+            weak), and the band is only this game's own spread. Trends across many games
+            mean something; one number does not.
           </div>
         </section>
       </div>
@@ -298,6 +300,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=29"></script>
+  <script type="module" src="js/app.js?v=30"></script>
 </body>
 </html>

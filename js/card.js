@@ -4,7 +4,7 @@
 // the user's theme, and shows chrome nobody wants to post. This draws a fixed 1200x630
 // card (the ratio every site previews links at) in the dark palette, so a card looks the
 // same whoever made it.
-import { CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=29";
+import { CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=30";
 
 const W = 1200, H = 630, PAD = 40;
 

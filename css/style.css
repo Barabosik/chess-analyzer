@@ -427,6 +427,7 @@ select#depthSel{width:100%}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* the rough game-rating estimate, under each accuracy */
 .accstrip .a .est{font-family:var(--mono);font-size:10.5px;color:var(--accent-ink);margin-top:3px}
+.accstrip .a .est .prov{font-size:9px;letter-spacing:.03em;text-transform:uppercase;opacity:.6}
 
 /* ============ legend / footer ============ */
 .legendcard{padding:8px 16px 16px}

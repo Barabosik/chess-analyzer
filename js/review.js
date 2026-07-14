@@ -1,8 +1,8 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=29";
-import { OPENINGS } from "../vendor/openings.js?v=29";
-import { explainMove } from "./motifs.js?v=29";
+import { Chess } from "../vendor/chess.js?v=30";
+import { OPENINGS } from "../vendor/openings.js?v=30";
+import { explainMove } from "./motifs.js?v=30";
 
 export const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -146,13 +146,32 @@ export function accuracy(losses) {
 // docs/NOTES.md). It was removed for exactly that reason, and re-added by request as
 // a labelled estimate. The curve is chosen, not fitted: monotone in mean loss, and
 // unlike the old one it does not saturate at 2100 — near-perfect play reads 2800+,
-// mean loss ~4%/move reads ~1650, ~8 reads ~900. Rounded to 50 to avoid fake
-// precision; null under 8 judged moves, where even this is too much to claim.
+// mean loss ~4%/move reads ~1650, ~8 reads ~900.
+//
+// Now returned as a BAND, not a lone number, because a lone number reads as a verdict
+// the data can't support. The band is the game's OWN spread mapped through the curve:
+// the standard error of its mean loss (std / sqrt(n)), so a game of consistent small
+// errors gives a tight band and an erratic one a wide band. A width floor keeps even a
+// flawless-looking game from reading as a point estimate. This uses no external corpus
+// — the centre is deliberately left where it is (there is nothing to re-fit it against),
+// so the honest lever is showing uncertainty, not pretending to a lower number.
+// null under 8 judged moves, where even this is too much to claim.
+const eloCurve = (loss) => 3150 * Math.exp(-0.155 * Math.max(0, loss));
 export function estimateElo(losses) {
   if (losses.length < 8) return null;
-  const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
-  const elo = 3150 * Math.exp(-0.155 * avg);
-  return Math.max(250, Math.min(3200, Math.round(elo / 50) * 50));
+  const n = losses.length;
+  const avg = losses.reduce((a, b) => a + b, 0) / n;
+  const variance = losses.reduce((a, b) => a + (b - avg) * (b - avg), 0) / n;
+  const se = Math.sqrt(variance / n);          // standard error of the mean loss
+  const clamp = (x) => Math.max(250, Math.min(3200, x));
+  const r50 = (x) => Math.round(clamp(x) / 50) * 50;
+  const elo = eloCurve(avg);
+  // More loss -> lower Elo, so the +se edge is the LOW end. Floor the half-width at
+  // 200 Elo: one game maps to a band several hundred wide however clean it looks.
+  const HALF = 200;
+  const lo = Math.min(eloCurve(avg + se), elo - HALF);
+  const hi = Math.max(eloCurve(avg - se), elo + HALF);
+  return { elo: r50(elo), lo: r50(lo), hi: r50(hi) };
 }
 
 // Non-pawn material on the board, both sides: 62 at the start, 0 in a pawn endgame.

@@ -55,6 +55,12 @@ await page.click('.modetab[data-mode="bot"]');
 await page.waitForTimeout(100);
 t.ok("bot mode shows the setup card", !(await hidden("#playSetup")));
 
+// The ladder now has a genuine sub-600 rung: Skill 0 alone floors ~1000, so the
+// weak tiers inject real blunders and the labels say so honestly.
+const weakest = await page.evaluate(() =>
+  document.querySelector('#botElo option[value="0"]').textContent);
+t.ok("the weakest bot is an honest sub-600 beginner", /≈\s*400/.test(weakest), weakest);
+
 await page.selectOption("#botElo", "0");        // weakest + fastest, for the test
 await page.click("#botStart");
 await page.waitForTimeout(200);
