@@ -1,14 +1,15 @@
-import { Chess } from "../vendor/chess.js?v=31";
-import { Engine } from "./engine.js?v=31";
-import { renderBoard } from "./board.js?v=31";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=31";
-import { rollup } from "./motifs.js?v=31";
-import { reviewKey, getCached, putCached } from "./cache.js?v=31";
-import { drawCard, cardName } from "./card.js?v=31";
-import { glyphSvg } from "./glyphs.js?v=31";
+import { Chess } from "../vendor/chess.js?v=32";
+import { Engine } from "./engine.js?v=32";
+import { renderBoard } from "./board.js?v=32";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=32";
+import { rollup } from "./motifs.js?v=32";
+import { reviewKey, getCached, putCached } from "./cache.js?v=32";
+import { drawCard, cardName } from "./card.js?v=32";
+import { glyphSvg } from "./glyphs.js?v=32";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=31";
-import { lookupPosition, RATING_BANDS } from "./explorer.js?v=31";
+  from "./onlinegames.js?v=32";
+import { lookupPosition, RATING_BANDS } from "./explorer.js?v=32";
+import { scanBoard, gridToFen } from "./boardscan.js?v=32";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -70,6 +71,7 @@ const state = {
   mode: "analyze",
   botPick: "w",          // the side chosen in the setup card
   bot: null,             // { color, lvl, thinking, over, note } while a bot game exists
+  editor: null,          // { grid, stm, flip, brush } while the position editor is open
 };
 state.explorerBand = "club";   // which rating band the opening explorer shows
 try {
@@ -91,7 +93,9 @@ const el = {};
  "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote","accStrip",
  "impBar","impBody","impBarTxt","impToggle",
  "playSetup","botElo","botStart","pickWhite","pickBlack","playBar","playTxt","botResign","botRematch","soloReset",
- "explorerCard","explorerTitle","explorerRating","explorerBody","explorerNote"]
+ "explorerCard","explorerTitle","explorerRating","explorerBody","explorerNote",
+ "editorCard","editorBoard","palette","edWhite","edBlack","edFlip","edClear","edStart","edAnalyze","edCancel","edErr","editNote",
+ "scanFile","scanBtn"]
   .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
@@ -1789,6 +1793,107 @@ function initExplorerUi() {
   };
 }
 
+// ---------- visual position editor / confirm-board (fed by js/boardscan.js) ----------
+// The always-correct half of screenshot import: whatever the scan guesses, you land
+// here to fix any square before analysing. Useful on its own too — set up any position
+// by hand, which pasting a FEN string never made pleasant.
+const EDIT_PIECES = ["K", "Q", "R", "B", "N", "P", "k", "q", "r", "b", "n", "p"];
+function fenToGrid(fen) {
+  return fen.split(" ")[0].split("/").map((fr) => {
+    const a = [];
+    for (const ch of fr) { if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) a.push(null); else a.push(ch); }
+    return a;
+  });
+}
+const emptyGrid = () => Array.from({ length: 8 }, () => Array(8).fill(null));
+
+function openEditor(grid, note) {
+  state.editor = { grid: grid.map((r) => r.slice()), stm: "w", flip: false, brush: "P" };
+  el.editNote.textContent = note ||
+    "Pick a piece, then click squares to place it. Choose ⌫ to erase. Set who is to move, then analyze.";
+  el.edErr.classList.add("hidden");
+  el.editorCard.classList.remove("hidden");
+  renderPalette();
+  renderEditor();
+  el.editorCard.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+function closeEditor() { state.editor = null; el.editorCard.classList.add("hidden"); }
+
+function renderPalette() {
+  const ed = state.editor;
+  const mk = (code) => {
+    const b = document.createElement("button");
+    b.className = "palp" + (ed.brush === code ? " on" : "");
+    b.dataset.code = code;
+    if (code === "") { b.classList.add("eraser"); b.textContent = "⌫"; b.title = "Erase"; }
+    else {
+      const pc = document.createElement("div");
+      pc.className = "pc";
+      pc.style.backgroundImage = "url('vendor/pieces/cburnett/" +
+        (code === code.toUpperCase() ? "w" : "b") + code.toUpperCase() + ".svg')";
+      b.appendChild(pc);
+    }
+    b.onclick = () => { state.editor.brush = code; renderPalette(); };
+    return b;
+  };
+  el.palette.innerHTML = "";
+  for (const c of EDIT_PIECES) el.palette.appendChild(mk(c));
+  el.palette.appendChild(mk(""));   // eraser
+}
+function renderEditor() {
+  const ed = state.editor;
+  renderBoard(el.editorBoard, gridToFen(ed.grid, ed.stm), { flip: ed.flip, onSquareClick: stampSquare });
+  el.edWhite.classList.toggle("on", ed.stm === "w");
+  el.edBlack.classList.toggle("on", ed.stm === "b");
+}
+function stampSquare(name) {
+  const ed = state.editor;
+  const c = name.charCodeAt(0) - 97, r = 8 - +name[1];
+  ed.grid[r][c] = ed.brush === "" ? null : ed.brush;
+  el.edErr.classList.add("hidden");
+  renderEditor();
+}
+function analyzeEditor() {
+  const ed = state.editor;
+  const fen = gridToFen(ed.grid, ed.stm);
+  try { new Chess(fen); }
+  catch (e) {
+    const msg = /king/i.test(e.message || "") ? "each side needs exactly one king."
+      : (e.message || "check the pieces.").replace(/^.*FEN:\s*/i, "");
+    el.edErr.textContent = "That position isn't legal — " + msg;
+    el.edErr.classList.remove("hidden");
+    return;
+  }
+  const flip = ed.flip;
+  el.fenInput.value = fen;
+  closeEditor();
+  loadGame({ headers: { White: "White", Black: "Black" }, moves: [], startFen: fen });
+  state.flip = flip;
+  drawBoard();
+}
+
+// Read a chosen / pasted image, run the recognizer, and open the confirm-board on its
+// guess. Every failure still lands on the editor, so the feature never dead-ends.
+async function handleScanFile(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url;
+    });
+    const scan = await scanBoard(img);
+    const note = scan.occupied
+      ? "Read " + scan.occupied + " pieces (confidence " + Math.round(scan.confidence * 100) +
+        "%). Fix any square it got wrong, set who's to move, then analyze."
+      : "Couldn't find pieces — the image should be cropped to just the 8×8 board. Place them yourself, or try another screenshot.";
+    openEditor(scan.grid, note);
+  } catch (e) {
+    openEditor(emptyGrid(), "Couldn't read that image. Set the position up by hand, then analyze.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function restartLive() {
   clearTimeout(liveTimer);
   // The human-move panel follows the same board position, but not the engine on/off
@@ -2048,6 +2153,26 @@ function bind() {
   };
   el.soloReset.onclick = () => loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN });
   initExplorerUi();
+
+  // ----- screenshot scan + position editor -----
+  el.scanFile.onchange = (e) => { handleScanFile(e.target.files[0]); e.target.value = ""; };
+  el.scanBtn.onclick = () => openEditor(emptyGrid(),
+    "Build a position: pick a piece and click squares. Choose ⌫ to erase. Set who's to move, then analyze.");
+  el.edWhite.onclick = () => { if (state.editor) { state.editor.stm = "w"; renderEditor(); } };
+  el.edBlack.onclick = () => { if (state.editor) { state.editor.stm = "b"; renderEditor(); } };
+  el.edFlip.onclick = () => { if (state.editor) { state.editor.flip = !state.editor.flip; renderEditor(); } };
+  el.edClear.onclick = () => { if (state.editor) { state.editor.grid = emptyGrid(); renderEditor(); } };
+  el.edStart.onclick = () => { if (state.editor) { state.editor.grid = fenToGrid(DEFAULT_FEN); renderEditor(); } };
+  el.edAnalyze.onclick = analyzeEditor;
+  el.edCancel.onclick = closeEditor;
+  // Paste an image straight onto the page (⌘V a screenshot) to scan it. Only image
+  // items are intercepted, so pasting a PGN into its box still works normally.
+  window.addEventListener("paste", (e) => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.startsWith("image/")) { handleScanFile(it.getAsFile()); e.preventDefault(); break; }
+    }
+  });
 
   $("loadPgn").onclick = () => {
     const txt = el.pgnInput.value.trim();

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=31" />
+  <link rel="stylesheet" href="css/style.css?v=32" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -102,9 +102,44 @@
           <label class="lab">Position (FEN)</label>
           <input type="text" id="fenInput" spellcheck="false" placeholder="rnbqkbnr/pppppppp/8/…" />
           <button id="loadFen">Load FEN</button>
+          <div class="scanrow">
+            <label class="filebtn">📷 Scan a screenshot<input type="file" id="scanFile" accept="image/*" hidden /></label>
+            <button id="scanBtn" class="mini">Set up by hand</button>
+          </div>
+          <div class="scanhint">A screenshot cropped to a board (Lichess / Chess.com). It's read as best we can, then you confirm on an editable board.</div>
         </div>
       </div>
       </div><!-- /impBody -->
+    </section>
+
+    <!-- Confirm-board: where a scanned screenshot (or a hand-built position) is
+         corrected and sent to analysis. Hidden until opened. -->
+    <section class="card editor hidden" id="editorCard">
+      <div class="sectlabel">Set up the position</div>
+      <p class="editnote" id="editNote"></p>
+      <div class="editmain">
+        <div class="editboardwrap"><div class="board" id="editorBoard"></div></div>
+        <div class="editside">
+          <div class="palette" id="palette"></div>
+          <div class="editrow">
+            <span class="lab">To move</span>
+            <div class="sidepick">
+              <button class="pick on" id="edWhite">⚪ White</button>
+              <button class="pick" id="edBlack">⚫ Black</button>
+            </div>
+          </div>
+          <div class="editbtns">
+            <button id="edFlip" class="mini">⇅ Flip</button>
+            <button id="edClear" class="mini">Clear</button>
+            <button id="edStart" class="mini">Start position</button>
+          </div>
+          <div class="editactions">
+            <button class="primary" id="edAnalyze">Analyze this position</button>
+            <button id="edCancel" class="mini">Cancel</button>
+          </div>
+          <div class="editerr hidden" id="edErr"></div>
+        </div>
+      </div>
     </section>
 
     <div class="grid">
@@ -312,6 +347,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=31"></script>
+  <script type="module" src="js/app.js?v=32"></script>
 </body>
 </html>

@@ -453,6 +453,25 @@ select#depthSel{width:100%}
 .tbres{font-size:12px}
 .explorer-note{font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.4}
 
+/* ============ position editor / confirm-board + screenshot scan ============ */
+.scanrow{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.scanhint{font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.4}
+.editor{padding:16px}
+.editnote{font-size:12px;color:var(--muted);margin:2px 0 14px;line-height:1.45}
+.editmain{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.editboardwrap{display:flex;width:min(360px,78vw);flex:0 0 auto}
+.editside{flex:1;min-width:210px;display:flex;flex-direction:column;gap:13px}
+.palette{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.palp{aspect-ratio:1;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;padding:3px}
+.palp:hover{border-color:var(--accent)}
+.palp.on{border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent)}
+.palp .pc{width:100%;height:100%;filter:drop-shadow(0 1px 1px rgba(0,0,0,.2))}
+.palp.eraser{font-size:18px;color:var(--muted)}
+.editrow{display:flex;align-items:center;gap:10px}
+.editbtns,.editactions{display:flex;gap:8px;flex-wrap:wrap}
+.editerr{color:var(--blunder);font-size:12px}
+
 /* ============ legend / footer ============ */
 .legendcard{padding:8px 16px 16px}
 .legend{display:flex;flex-wrap:wrap;gap:9px 16px;font-size:12.5px;color:var(--muted)}

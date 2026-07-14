@@ -383,6 +383,48 @@ black,averageRating}`) and is exercised only against a mock. If a user's browser
 also refused, the panel degrades to hidden and only the tablebase half shows; that is
 by design, but the explorer half is worth a real-browser check.
 
+## Screenshot import + position editor (`js/boardscan.js`, editor in `js/app.js`)
+
+Take a screenshot of a board and keep analysing from it. The feature is two halves: a
+best-effort recognizer, and a confirm-board that makes an imperfect read safe.
+
+**The recognizer reads a square by shape and colour separately, which is what makes it
+theme-independent.** For each of the 64 cells: the background is the median of the four
+corners (always board colour); foreground is pixels far enough from it (the piece ink);
+occupancy is how much of the cell is foreground; the piece TYPE is whichever of the six
+cburnett silhouettes the foreground mask overlaps best (we ship that art, so a Lichess
+board matches its own SVGs by IoU); the piece COLOUR is read from luminance. Neither the
+board's two colours nor the piece tint enters the type decision.
+
+Two colour rules were each a wrong read first, found by the render-and-read-back test:
+- **Adaptive luminance margin.** A fixed ±25 margin read White's back-rank pieces as
+  black on light squares, because a light square (lum ~220) sits close to a white fill
+  (~255) so most of the fill fell under the margin and the black outline won. The margin
+  is now 35% of the headroom to pure white / black, so the fill is counted on light
+  squares and the outline on dark ones.
+- **Light-fill ratio, not majority.** An ornate white piece (bishop's slit, queen's
+  crown) carries so much internal dark detail that its dark pixels outnumber its light
+  fill, yet a black piece has almost no light fill. So colour is white when
+  `lightCount * 4 >= darkCount` (a 1:4 ratio), not when light simply outweighs dark.
+
+It assumes a clean digital board sliced evenly into 8×8, white at the bottom. It does not
+try to auto-crop, detect orientation, read the side to move, or handle a photo of a
+wooden set. All of that is the editor's job, which is the point: the scan only has to get
+most squares close.
+
+**The confirm-board is the reliable half, and is useful on its own** — pick a piece, click
+squares, set who is to move, analyze; the first way to build an arbitrary position without
+typing a FEN. Castling rights are not in a still image, so they are inferred (a side keeps
+a right only if its king and the matching rook are on home squares). An illegal position
+(`new Chess(fen)` throws) is refused with a plain reason rather than loaded. A scan lands
+here pre-filled with its guess and a confidence figure; every scan failure also lands here
+(empty), so the feature never dead-ends. Paste an image anywhere (⌘V) to scan it; only
+image clipboard items are intercepted, so pasting a PGN still works.
+
+The recognizer is tested by MAKING a screenshot: render a known FEN to a canvas with the
+same cburnett art and assert `scanBoard` reads it back (opening position exactly, a
+sparse endgame and a greyer theme within tolerance). The editor is driven end to end.
+
 ## What's next, in order
 
 1. **Retry mode.** At each mistake, hide the engine's move and make the player find
