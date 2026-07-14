@@ -10,6 +10,7 @@ const ok = (n, pass, detail = "") => {
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
+await page.route(/(explorer|tablebase)\.lichess\.ovh/, (r) => r.abort());  // stay offline: no live explorer calls
 
 // The import card folds away once a game is open; reopen it before touching it.
 async function openImport(p = page) {

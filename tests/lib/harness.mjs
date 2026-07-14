@@ -21,6 +21,10 @@ export function suite(name) {
 export async function open({ viewport = { width: 1440, height: 1400 }, device } = {}) {
   const browser = await chromium.launch();
   const context = await browser.newContext(device ? { ...device } : { viewport });
+  // Stay hermetic: the opening-explorer / tablebase panel would otherwise hit Lichess's
+  // live API on every game load. Block those hosts by default. The explorer suite
+  // registers its own page.route mocks, which take precedence over this context route.
+  await context.route(/(explorer|tablebase)\.lichess\.ovh/, (r) => r.abort());
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));

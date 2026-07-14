@@ -9,6 +9,7 @@ const ok = (n, pass, d = "") => {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 1400 } });
+await page.route(/(explorer|tablebase)\.lichess\.ovh/, (r) => r.abort());  // stay offline: no live explorer calls
 const errs = [];
 page.on("pageerror", (e) => errs.push(e.message));
 

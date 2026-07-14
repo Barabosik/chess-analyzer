@@ -9,6 +9,7 @@ const ok = (n, pass, d = "") => {
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
+await ctx.route(/(explorer|tablebase)\.lichess\.ovh/, (r) => r.abort());  // stay offline: no live explorer calls
 const page = await ctx.newPage();
 
 // The import card folds away once a game is open; reopen it before touching it.

@@ -1,13 +1,14 @@
-import { Chess } from "../vendor/chess.js?v=30";
-import { Engine } from "./engine.js?v=30";
-import { renderBoard } from "./board.js?v=30";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=30";
-import { rollup } from "./motifs.js?v=30";
-import { reviewKey, getCached, putCached } from "./cache.js?v=30";
-import { drawCard, cardName } from "./card.js?v=30";
-import { glyphSvg } from "./glyphs.js?v=30";
+import { Chess } from "../vendor/chess.js?v=31";
+import { Engine } from "./engine.js?v=31";
+import { renderBoard } from "./board.js?v=31";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=31";
+import { rollup } from "./motifs.js?v=31";
+import { reviewKey, getCached, putCached } from "./cache.js?v=31";
+import { drawCard, cardName } from "./card.js?v=31";
+import { glyphSvg } from "./glyphs.js?v=31";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=30";
+  from "./onlinegames.js?v=31";
+import { lookupPosition, RATING_BANDS } from "./explorer.js?v=31";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -70,10 +71,12 @@ const state = {
   botPick: "w",          // the side chosen in the setup card
   bot: null,             // { color, lvl, thinking, over, note } while a bot game exists
 };
+state.explorerBand = "club";   // which rating band the opening explorer shows
 try {
   state.sound = localStorage.getItem("ca_sound") !== "0";
   state.acct.site = localStorage.getItem("ca_site") || "chesscom";
   state.acct.user = localStorage.getItem("ca_user") || "";
+  state.explorerBand = localStorage.getItem("ca_explorer_band") || "club";
 } catch (e) { /* private mode */ }
 
 const $ = (id) => document.getElementById(id);
@@ -87,7 +90,8 @@ const el = {};
  "siteSel","userInput","loadUser","acctMsg","gameList",
  "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote","accStrip",
  "impBar","impBody","impBarTxt","impToggle",
- "playSetup","botElo","botStart","pickWhite","pickBlack","playBar","playTxt","botResign","botRematch","soloReset"]
+ "playSetup","botElo","botStart","pickWhite","pickBlack","playBar","playTxt","botResign","botRematch","soloReset",
+ "explorerCard","explorerTitle","explorerRating","explorerBody","explorerNote"]
   .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
@@ -1525,6 +1529,7 @@ function renderModeUi() {
       ? "<b>" + esc(state.bot.note || "Game over") + "</b> — the review is unlocked."
       : "Playing <b>" + esc(botName(state.bot)) + "</b> as " + (state.bot.color === "w" ? "White" : "Black") + ".";
   }
+  refreshExplorer();   // hide it during a live bot game, bring it back when one ends
 }
 
 function startBot() {
@@ -1682,8 +1687,114 @@ function gamePgn() {
 // searches (overlapping stop/position/go corrupts the WASM engine).
 let liveGen = 0;
 let liveTimer = null;
+// ---------- opening explorer / endgame tablebase (js/explorer.js) ----------
+// A bonus panel: what humans play here (Lichess DB), or perfect play once the board
+// is down to seven pieces (tablebase). It steps aside without a fuss when offline.
+let explorerTimer = null, explorerGen = 0;
+const explorerCache = new Map();   // "fen|band" -> normalized result, for this session
+
+function explorerVisible() {
+  // Silent during a competitive bot game and in a hidden tab — the same courtesies the
+  // live engine panel keeps — and on the bare opening board with nothing loaded. A game,
+  // an exploration line, or a position pasted as a FEN all count as something to look up.
+  if (!state.booted || document.hidden || botActive()) return false;
+  return state.moves.length > 0 || !!state.explore || state.startFen !== DEFAULT_FEN;
+}
+
+function refreshExplorer() {
+  clearTimeout(explorerTimer);
+  const gen = ++explorerGen;
+  if (!explorerVisible()) { el.explorerCard.classList.add("hidden"); return; }
+  const fen = currentFen();
+  const band = RATING_BANDS.find((b) => b.id === state.explorerBand) || RATING_BANDS[1];
+  const key = fen + "|" + band.id;
+  if (explorerCache.has(key)) { renderExplorer(explorerCache.get(key), fen); return; }
+  // Debounce: arrowing quickly through a game must not fire a request per ply.
+  explorerTimer = setTimeout(async () => {
+    if (gen !== explorerGen) return;
+    el.explorerCard.classList.remove("hidden");
+    el.explorerBody.innerHTML = '<div class="exloading">Looking it up…</div>';
+    el.explorerNote.textContent = "";
+    try {
+      const data = await lookupPosition(fen, { ratings: band.ratings });
+      explorerCache.set(key, data);
+      if (gen === explorerGen) renderExplorer(data, fen);
+    } catch (e) {
+      if (gen === explorerGen) el.explorerCard.classList.add("hidden");   // a bonus, so it just leaves
+    }
+  }, 260);
+}
+
+const pct = (x) => Math.round(x * 100);
+const fmtCount = (n) => (n >= 10000 ? Math.round(n / 1000) + "k" : n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+
+function renderExplorer(data, fen) {
+  el.explorerCard.classList.remove("hidden");
+  if (data.kind === "tablebase") renderTablebase(data, fen);
+  else renderOpeningExplorer(data, fen);
+  el.explorerBody.querySelectorAll(".exrow").forEach((btn) =>
+    (btn.onclick = () => playLine(fen, [btn.dataset.uci])));   // click a move = play it on the board
+}
+
+function renderOpeningExplorer(data, fen) {
+  el.explorerTitle.textContent = "Opening explorer";
+  el.explorerRating.style.visibility = "visible";
+  if (!data.total || !data.moves.length) {
+    el.explorerBody.innerHTML = "";
+    el.explorerNote.textContent = "No games at this position in that rating band.";
+    return;
+  }
+  el.explorerBody.innerHTML = data.moves.slice(0, 8).map((m) =>
+    '<button class="exrow" data-uci="' + m.uci + '">' +
+      '<span class="exsan">' + esc(m.san) + "</span>" +
+      '<span class="exshare">' + pct(m.share) + "%</span>" +
+      '<span class="wdl"><i class="w" style="width:' + pct(m.white) + '%"></i>' +
+        '<i class="d" style="width:' + pct(m.draws) + '%"></i>' +
+        '<i class="b" style="width:' + pct(m.black) + '%"></i></span>' +
+      '<span class="excount">' + fmtCount(m.total) + "</span></button>").join("");
+  const op = data.opening ? esc(data.opening.name) + " · " : "";
+  el.explorerNote.textContent = op + "bars are white / draw / black results; % is how often the move is played here.";
+}
+
+const TB_LABEL = { win: "Winning", loss: "Losing", draw: "Drawn",
+  "cursed-win": "Winning (50-move)", "blessed-loss": "Losing (50-move)",
+  "maybe-win": "Winning", "maybe-loss": "Losing", unknown: "Unknown" };
+
+function renderTablebase(data, fen) {
+  el.explorerTitle.textContent = "Endgame tablebase";
+  el.explorerRating.style.visibility = "hidden";   // rating is irrelevant to perfect play
+  const verdict = data.checkmate ? "Checkmate" : data.stalemate ? "Stalemate"
+    : (TB_LABEL[data.category] || "Unknown");
+  const dtz = (data.dtz != null && !data.checkmate && !data.stalemate)
+    ? ' <span class="dim">· ' + Math.abs(data.dtz) + " to zeroing</span>" : "";
+  const rows = data.moves.map((m) =>
+    '<button class="exrow tb" data-uci="' + m.uci + '">' +
+      '<span class="exsan">' + esc(m.san) + "</span>" +
+      '<span class="tbres ' + (m.result || "") + '">' + (TB_LABEL[m.result] || m.result || "") + "</span>" +
+      (m.dtz != null ? '<span class="excount">' + Math.abs(m.dtz) + "</span>" : "") +
+    "</button>").join("");
+  el.explorerBody.innerHTML =
+    '<div class="tbverdict ' + (data.category || "") + '">' + verdict + dtz + "</div>" + rows;
+  el.explorerNote.textContent = "Perfect play, from Lichess's 7-piece tablebase. Distance is to the next pawn move or capture, not to mate.";
+}
+
+function initExplorerUi() {
+  el.explorerRating.innerHTML = RATING_BANDS.map((b) =>
+    '<option value="' + b.id + '">' + b.label + "</option>").join("");
+  el.explorerRating.value = state.explorerBand;
+  el.explorerRating.onchange = () => {
+    state.explorerBand = el.explorerRating.value;
+    try { localStorage.setItem("ca_explorer_band", state.explorerBand); } catch (e) { /* private mode */ }
+    refreshExplorer();
+  };
+}
+
 function restartLive() {
   clearTimeout(liveTimer);
+  // The human-move panel follows the same board position, but not the engine on/off
+  // toggle — someone who muted the engine may still want the opening stats — so it
+  // refreshes here, before the live-engine guard below.
+  refreshExplorer();
   // botActive: no engine commentary during a competitive game.
   if (!state.booted || !state.live || state.reviewing || document.hidden || botActive()) return;
   const gen = ++liveGen;
@@ -1936,6 +2047,7 @@ function bind() {
     endBotGame(state.bot.color === "w" ? "0-1" : "1-0", "You resigned");
   };
   el.soloReset.onclick = () => loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN });
+  initExplorerUi();
 
   $("loadPgn").onclick = () => {
     const txt = el.pgnInput.value.trim();

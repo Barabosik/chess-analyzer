@@ -347,6 +347,42 @@ come from the same numbers). Measured on the sample game at depth 14 (8 book mov
 103): **95.4/92.4 → 95.1/91.8**, so +0.3 White and +0.6 Black of inflation — small on a
 lightly-booked game, and it grows with the amount of theory played.
 
+## Opening explorer + endgame tablebase (`js/explorer.js`)
+
+The one thing the engine could never tell you: not the best move, but the *popular* one,
+and how it scores for humans at your level. Lichess exposes it free, key-less and
+CORS-open, so the panel runs from the browser like everything else. Two sources, chosen
+by piece count: over 7 pieces asks the opening explorer ("at your rating, N% play this",
+with a white/draw/black result bar per move); 7 or fewer asks the tablebase, which is
+*computed, not searched*, so its win/draw/loss verdict is exact and its distance is
+DTZ (to the next pawn move or capture), not to mate. Clicking any move plays it on the
+board, reusing the existing exploration line.
+
+Three rules keep it from being annoying. It follows the board position but NOT the
+engine on/off toggle (someone who muted the engine may still want opening stats), so it
+refreshes from `restartLive` before that toggle's guard. It keeps the live panel's two
+courtesies: silent during a competitive bot game and in a hidden tab. And because it is
+a bonus, a failed request (offline, rate-limited) hides the panel rather than showing an
+error. Requests are debounced 260ms so arrowing through a game does not fire one per
+ply, and each `fen|band` result is cached for the session. The tablebase verdict is the
+side-to-move's; a move's reported category is the *opponent's*, so it is flipped back to
+the mover's POV before display (a move leaving the opponent "loss" is our win).
+
+The tests mock both Lichess endpoints with `page.route`, and the harness blocks those
+hosts by default so no other suite makes a live call — the suite stays offline and
+reproducible, as the rest of it is.
+
+**Live-verification status.** The tablebase shape was confirmed against the real API
+(`category`/`dtz`/`checkmate`/`stalemate`, and each move's `category` in the opponent's
+POV, which we flip). The opening explorer could NOT be reached from the build
+environment: `explorer.lichess.ovh` answered `401` on every path while
+`tablebase.lichess.ovh` answered `200`, which is Lichess rate-limiting/blocking the
+explorer for datacenter IPs, not a bug here. So the explorer parser follows Lichess's
+documented shape (`white`/`draws`/`black`, `opening`, `moves[].{uci,san,white,draws,
+black,averageRating}`) and is exercised only against a mock. If a user's browser is
+also refused, the panel degrades to hidden and only the tablebase half shows; that is
+by design, but the explorer half is worth a real-browser check.
+
 ## What's next, in order
 
 1. **Retry mode.** At each mistake, hide the engine's move and make the player find
@@ -358,8 +394,8 @@ lightly-booked game, and it grows with the amount of theory played.
    (re-opening a game currently re-runs ~100 engine searches).
 3. **Mark where each side left theory** — now trustworthy, and one line of insight:
    "you left book on move 5, your opponent on move 9."
-4. **Lichess opening explorer** (free, CORS-open, no auth): "at your rating, 62% play
-   this here." The one thing the app can't currently tell you.
+4. ~~**Lichess opening explorer**~~ — done, see the section above (also added the 7-piece
+   endgame tablebase alongside it).
 
 ## Gotchas
 

@@ -429,6 +429,30 @@ select#depthSel{width:100%}
 .accstrip .a .est{font-family:var(--mono);font-size:10.5px;color:var(--accent-ink);margin-top:3px}
 .accstrip .a .est .prov{font-size:9px;letter-spacing:.03em;text-transform:uppercase;opacity:.6}
 
+/* ============ opening explorer / endgame tablebase ============ */
+.explorer{padding:14px}
+.explorer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+.explorer-body{display:flex;flex-direction:column;gap:2px}
+.exloading{font-size:12px;color:var(--muted);padding:4px 2px}
+.exrow{display:grid;grid-template-columns:2.6em 2.3em 1fr 2.6em;align-items:center;gap:8px;
+  width:100%;background:none;border:0;padding:5px 6px;border-radius:7px;cursor:pointer;text-align:left;
+  color:var(--ink);font:inherit}
+.exrow:hover{background:var(--panel2)}
+.exrow.tb{grid-template-columns:2.6em 1fr 2.6em}
+.exsan{font-weight:600;font-family:var(--mono)}
+.exshare,.excount{font-size:11px;color:var(--muted);text-align:right;font-family:var(--mono)}
+.wdl{display:flex;height:14px;border-radius:3px;overflow:hidden;background:var(--line)}
+.wdl i{display:block;height:100%}
+.wdl .w{background:#e9e7df}
+.wdl .d{background:var(--muted);opacity:.5}
+.wdl .b{background:#3a3f47}
+.tbverdict{font-weight:700;font-size:14px;margin-bottom:6px}
+.tbverdict.win,.tbverdict.cursed-win,.tbres.win,.tbres.cursed-win{color:var(--best)}
+.tbverdict.loss,.tbverdict.blessed-loss,.tbres.loss,.tbres.blessed-loss{color:var(--blunder)}
+.tbverdict.draw,.tbres.draw{color:var(--muted)}
+.tbres{font-size:12px}
+.explorer-note{font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.4}
+
 /* ============ legend / footer ============ */
 .legendcard{padding:8px 16px 16px}
 .legend{display:flex;flex-wrap:wrap;gap:9px 16px;font-size:12.5px;color:var(--muted)}

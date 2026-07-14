@@ -4,6 +4,7 @@ const BASE = process.env.BASE || "http://localhost:8787";
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ ...devices["iPhone 13"] });
+await ctx.route(/(explorer|tablebase)\.lichess\.ovh/, (r) => r.abort());  // stay offline: no live explorer calls
 const page = await ctx.newPage();
 const errs = [];
 page.on("pageerror", (e) => errs.push(e.message));

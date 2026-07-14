@@ -12,6 +12,7 @@ const ok = (n, pass, d = "") => {
 const browser = await chromium.launch();
 // A real laptop screen — the case the user complained about.
 const page = await browser.newPage({ viewport: { width: 1440, height: 820 } });
+await page.route(/(explorer|tablebase)\.lichess\.ovh/, (r) => r.abort());  // stay offline: no live explorer calls
 
 // The import card folds away once a game is open; reopen it before touching it.
 async function openImport(p = page) {
