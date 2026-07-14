@@ -455,6 +455,25 @@ The recognizer is tested by MAKING a screenshot: render a known FEN to a canvas 
 same cburnett art and assert `scanBoard` reads it back (opening position exactly, a
 sparse endgame and a greyer theme within tolerance). The editor is driven end to end.
 
+## The "what to work on" summary (`js/summary.js`)
+
+A one-paragraph, plain-English verdict per side, the kind chess.com shows: how you did,
+the move the game turned on, the pattern behind your mistakes, and one thing to drill. It
+is a **pure function of the review** — accuracy, the phase split, the classified moves
+with their motifs, and the clocks — so it invents no new analysis and is unit-tested
+directly with crafted data, no engine. It reuses the exact signals already on screen: the
+turning point is the mistake/blunder that lost the most win%, the pattern is the dominant
+motif kind (the same grouping `rollup` uses), the weak phase is the lowest phase accuracy,
+and the "rushed" rider is the clock verdict. The advice line is a fixed map from motif
+kind (hung-piece → "check your pieces are defended", fork → "watch for checks that hit a
+second piece", …) or, absent a dominant motif, from the weakest phase.
+
+Two rules keep it honest: a **clean game** (no mistakes to point at) gets an encouraging
+note rather than an invented weakness, and the **bot is never coached** — only human sides
+get a paragraph, since lecturing a strength-limited engine is meaningless. Hidden until a
+review exists. `tests/coach.test.mjs` pins the turning-point, pattern, advice and
+clean-game wording; `layout.test` checks the card appears after a real review.
+
 ## What's next, in order
 
 1. **Retry mode.** At each mistake, hide the engine's move and make the player find

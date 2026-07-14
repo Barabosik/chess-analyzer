@@ -1,15 +1,16 @@
-import { Chess } from "../vendor/chess.js?v=34";
-import { Engine } from "./engine.js?v=34";
-import { renderBoard } from "./board.js?v=34";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=34";
-import { rollup } from "./motifs.js?v=34";
-import { reviewKey, getCached, putCached } from "./cache.js?v=34";
-import { drawCard, cardName } from "./card.js?v=34";
-import { glyphSvg } from "./glyphs.js?v=34";
+import { Chess } from "../vendor/chess.js?v=35";
+import { Engine } from "./engine.js?v=35";
+import { renderBoard } from "./board.js?v=35";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=35";
+import { rollup } from "./motifs.js?v=35";
+import { reviewKey, getCached, putCached } from "./cache.js?v=35";
+import { drawCard, cardName } from "./card.js?v=35";
+import { glyphSvg } from "./glyphs.js?v=35";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=34";
-import { lookupPosition, RATING_BANDS } from "./explorer.js?v=34";
-import { scanBoard, gridToFen } from "./boardscan.js?v=34";
+  from "./onlinegames.js?v=35";
+import { lookupPosition, RATING_BANDS } from "./explorer.js?v=35";
+import { scanBoard, gridToFen } from "./boardscan.js?v=35";
+import { gameSummary } from "./summary.js?v=35";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -95,7 +96,7 @@ const el = {};
  "playSetup","botElo","botStart","pickWhite","pickBlack","playBar","playTxt","botResign","botRematch","soloReset",
  "explorerCard","explorerTitle","explorerRating","explorerBody","explorerNote",
  "editorCard","editorBoard","palette","edWhite","edBlack","edFlip","edClear","edStart","edAnalyze","edCancel","edErr","editNote",
- "scanFile","scanBtn"]
+ "scanFile","scanBtn","coachCard","coachBody"]
   .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
@@ -925,6 +926,7 @@ function loadGame(parsed) {
   el.summary.classList.add("hidden");
   el.accStrip.classList.add("hidden");
   el.phases.classList.add("hidden");
+  el.coachCard.classList.add("hidden");
   el.reviewBtn.disabled = !state.moves.length || !state.booted;
   renderModeUi();          // mode-owned visibility (import card, play bar, review lock)
   goto(0);
@@ -1024,6 +1026,22 @@ function renderPhases() {
   el.phases.classList.remove("hidden");
 }
 
+// The plain-English "what to work on" card (js/summary.js). One paragraph per human
+// side; the bot never gets coached. Hidden until a game is reviewed.
+function renderCoach(botGame) {
+  if (!state.reviewed) { el.coachCard.classList.add("hidden"); return; }
+  const ctx = { moves: state.moves, review: state.review, opening: state.opening, headers: state.headers };
+  const blocks = [];
+  for (const c of ["w", "b"]) {
+    const nm = c === "w" ? state.headers.White : state.headers.Black;
+    if (botGame && /Stockfish \(≈/.test(nm || "")) continue;   // don't lecture the engine
+    const text = gameSummary(c, ctx);
+    if (text) blocks.push('<p class="advp">' + esc(text) + "</p>");
+  }
+  el.coachBody.innerHTML = blocks.join("");
+  el.coachCard.classList.toggle("hidden", !blocks.length);
+}
+
 function renderSummary() {
   const R = state.review;
   el.summary.classList.remove("hidden");
@@ -1049,6 +1067,7 @@ function renderSummary() {
   renderPhases();
   renderTimeNote();
   renderMotifNote();
+  renderCoach(botGame);
   el.counts.innerHTML = "";
   for (const k of CLASS_ORDER) {
     const w = R.counts.w[k] || 0, b = R.counts.b[k] || 0;

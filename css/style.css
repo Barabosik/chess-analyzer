@@ -472,6 +472,12 @@ select#depthSel{width:100%}
 .editbtns,.editactions{display:flex;gap:8px;flex-wrap:wrap}
 .editerr{color:var(--blunder);font-size:12px}
 
+/* ============ "what to work on" coach summary ============ */
+.advice{padding:14px}
+.coachbody .advp{font-size:12.5px;line-height:1.55;color:var(--ink);margin:0 0 10px}
+.coachbody .advp:last-child{margin-bottom:0}
+.coachbody .advp+.advp{padding-top:10px;border-top:1px solid var(--line)}
+
 /* ============ legend / footer ============ */
 .legendcard{padding:8px 16px 16px}
 .legend{display:flex;flex-wrap:wrap;gap:9px 16px;font-size:12.5px;color:var(--muted)}

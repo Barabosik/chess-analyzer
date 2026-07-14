@@ -81,6 +81,14 @@ ok("both players get a provisional game-rating band",
   est.length === 2 && est.every((t) => /≈ \d{3,4}–\d{3,4}/.test(t) && /provisional/i.test(t)),
   est.join(" | ") || "none");
 
+// The plain-English "what to work on" card appears after a review, with real advice.
+const coach = await page.evaluate(() => {
+  const c = document.getElementById("coachCard");
+  return { hidden: c.classList.contains("hidden"), text: c.textContent.replace(/\s+/g, " ").trim() };
+});
+ok("the 'what to work on' summary appears after review",
+  !coach.hidden && /Work on|clean game/i.test(coach.text), JSON.stringify(coach.text).slice(0, 160));
+
 // The breakdown marks are SVGs (font glyphs sat off-centre, each in its own way).
 const glyphs = await page.evaluate(() => ({
   breakdown: document.querySelectorAll("#counts .g svg.clsglyph").length,
