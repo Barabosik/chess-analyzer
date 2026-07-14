@@ -80,18 +80,28 @@ in from whatever was analysed before, so evaluations shifted a few centipawns an
 moves near a class boundary flipped (`Be6 ✓→•`, `Qh4 ★→•`). `reviewGame` now clears
 the hash first. Caught by the test suite on the day it was written.
 
-## Removed: estimated rating
+## Estimated rating: removed, then re-added as a labelled estimate
 
-It mapped accuracy to Elo with `6.8 * exp(0.0575 * acc)`. Checked against **64 real
-games spanning 280–3414 Elo** (every imported PGN carries the players' true
-ratings): **mean absolute error 1072 Elo.** Two players 2500 points apart produced
-the same accuracy (88.4% → real 322; 89.3% → real 2826), and the curve tops out near
-2100, so every strong player was under-rated by ~1700.
+Removed first: it mapped accuracy to Elo with `6.8 * exp(0.0575 * acc)`. Checked
+against **64 real games spanning 280–3414 Elo** (every imported PGN carries the
+players' true ratings): **mean absolute error 1072 Elo.** Two players 2500 points
+apart produced the same accuracy (88.4% → real 322; 89.3% → real 2826), and the
+curve tops out near 2100, so every strong player was under-rated by ~1700.
 
 It is **not fixable by re-fitting**: accuracy does correlate with strength
 (r = 0.63), but the best possible mapping still misses by ~850 Elo, because a quiet
 game inflates accuracy and a sharp one deflates it whoever is playing. Single-game
-accuracy cannot pin down a rating. Don't add it back.
+accuracy cannot pin down a rating.
+
+**Re-added by explicit request** (2026-07), with the error owned rather than hidden:
+`estimateElo` in `review.js` maps mean win%-loss to `3150 * exp(-0.155 * L)`,
+clamped to [250, 3200] and rounded to 50 — deliberately coarse. The curve is
+*chosen, not fitted* (there is no fit worth making — see above); what it fixes over
+the old one is the 2100 ceiling, so strong play can at least read strong. It shows
+as "game rating ≈ N" under each accuracy, needs ≥ 8 judged moves, and the
+ratingnote under the breakdown says plainly that one game misses by several hundred
+points either way. A clean game by a 900 will read 2000+; that is the feature's
+honest limit, and chess.com's equivalent does the same.
 
 ## Move motifs: naming why a move was bad (`js/motifs.js`)
 
@@ -136,6 +146,40 @@ Deferred on purpose: **pin/skewer** (its material usually resurfaces as a plain 
 piece a move later, so it's hard to attribute cleanly) and **non-check forks** (lower
 precision without a deeper search).
 
+## The classification marks are drawn, not typed (`js/glyphs.js`)
+
+The badges (board, breakdown, legend, coach card, flourish) used to show text
+glyphs — ★ ✓ • ◇ !! ?! — centred with flexbox. Flexbox centres the *line box*; where
+the shape sits inside its em box is up to whichever fallback font supplied that
+character, and every one differs (the star low, the diamond high, the exclamation
+marks thin and off-axis). That is why "every badge looked slightly misaligned" and
+no CSS nudge fixed all of them at once. They are now inline SVGs from one 24×24
+grid: centred by construction, identical on every platform, and the `!` / `!!`
+finally have real weight. The move *list* keeps text glyphs — inline with text,
+baseline-aligned, where fonts do the right thing — with a heavier face on `!`/`!!`
+(`.cg.fat`). Tests read `data-g` on the flourish glyph now, not textContent.
+
+## Modes: analyze / free board / play the engine
+
+One switch above the import card. "Free board" makes a board move a move IN the
+game (append, or rewrite-from-here when behind), so a hand-built line can be
+analyzed like an imported one; the PGN box is kept in sync (`gamePgn`) so share
+links keep working. "Play the engine" is a real game against a strength-limited
+Stockfish, and the app tapes the engine's mouth shut while it runs: no eval bar, no
+live lines, no review button until the game ends or you resign (`renderModeUi`).
+
+Two things here are load-bearing:
+
+- **Strength must not leak.** `Engine.play()` sets `UCI_Elo` / `Skill Level` for
+  its one search and resets on its `bestmove`; `analyse()` and `live()` also assert
+  full strength before every search. Without both halves, a review run after a bot
+  game would be quietly scored by a 1200-rated engine — every evaluation subtly
+  wrong and nothing to say why.
+- **UCI_Elo floors at 1320**, so the sub-1300 settings map to Skill Level
+  (600→0, 800→2, 1000→4, 1200→6) with short movetimes — a "beginner" that thinks
+  for ten seconds reads as strong even when it isn't. The ≈-labels are estimates,
+  not calibrated ratings.
+
 ## Interface decisions that were bugs in disguise
 
 **The action and its result must be in the same place.** The move's verdict, the
@@ -146,6 +190,16 @@ change — two halves of one thought, split across the page. They are now one **
 card** (`.coach`) under the board: readout → verdict → "★ Bc4 was best · Explain" → the
 walk-through, which opens *in place of* the button that summons it. The right column is
 now purely engine and statistics.
+
+**A brilliancy explains itself forwards.** A bad move gets a walk-through of the
+line it should have played (`bestLine`, from before the move). A brilliant move IS
+the best line, so that shape has nothing to show — what convinces is the line
+*after* it: the opponent's best try failing. `afterLine` (the pv of the position
+after the move, already searched) powers a "See why it works" row that reuses the
+same Explain bar; the coach note names the piece offered (`sacPiece`) and, for a
+Great, how much the second-best move gives up (`onlyGap`). Stored only for
+brilliant/great to keep cached reviews small; cache key bumped v1→v2 for the new
+fields.
 
 **A knight's arrow bends.** Drawn straight, g1→f3 cuts diagonally across squares the
 knight never visits and reads as a bishop move. It now turns a right angle — the long

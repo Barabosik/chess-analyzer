@@ -1,8 +1,8 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=28";
-import { OPENINGS } from "../vendor/openings.js?v=28";
-import { explainMove } from "./motifs.js?v=28";
+import { Chess } from "../vendor/chess.js?v=29";
+import { OPENINGS } from "../vendor/openings.js?v=29";
+import { explainMove } from "./motifs.js?v=29";
 
 export const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
@@ -136,6 +136,23 @@ export function accuracy(losses) {
   if (!losses.length) return 100;
   const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
   return Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * avg) - 3.1669));
+}
+
+// A rough game-rating estimate from the same mean loss that accuracy uses.
+//
+// Be clear-eyed about what this is: measured against 64 real games, NO mapping from
+// single-game play quality to Elo gets closer than ~850 points on average — a quiet
+// game reads too strong and a sharp one too weak, whoever is playing (see
+// docs/NOTES.md). It was removed for exactly that reason, and re-added by request as
+// a labelled estimate. The curve is chosen, not fitted: monotone in mean loss, and
+// unlike the old one it does not saturate at 2100 — near-perfect play reads 2800+,
+// mean loss ~4%/move reads ~1650, ~8 reads ~900. Rounded to 50 to avoid fake
+// precision; null under 8 judged moves, where even this is too much to claim.
+export function estimateElo(losses) {
+  if (losses.length < 8) return null;
+  const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
+  const elo = 3150 * Math.exp(-0.155 * avg);
+  return Math.max(250, Math.min(3200, Math.round(elo / 50) * 50));
 }
 
 // Non-pawn material on the board, both sides: 62 at the start, 0 in a pawn endgame.
@@ -367,6 +384,15 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     // material...). Decided statically from the position -- see js/motifs.js.
     const motif = explainMove({ ...mv, cls }, before, after);
 
+    // For the rare good moves, keep what makes them explainable: the engine's line
+    // FROM AFTER the move (the follow-up that shows why the sacrifice works, or why
+    // the only-move holds), the piece a brilliancy offered, and the gap to the
+    // second-best move. A bad move explains itself with the line it should have
+    // played (bestLine); a brilliant one explains itself with what happens next.
+    const celebrated = cls === "brilliant" || cls === "great";
+    const afterLine = celebrated && after.best && after.best.pv && after.best.pv.length
+      ? after.best.pv : null;
+
     out.push({
       ...mv,
       phase,
@@ -386,6 +412,10 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
       bestLine: bookEntry || !before.best ? null : (before.best.pv || null),
       showBetter: !bookEntry && (cls === "inaccuracy" || cls === "mistake" || cls === "blunder"),
       motif: bookEntry ? null : motif,
+      afterLine,
+      sacPiece: cls === "brilliant" && offered ? offered.type : null,
+      sacGiven: cls === "brilliant" ? given : null,
+      onlyGap: cls === "great" && gap != null ? Math.round(gap) : null,
       // only positions the book actually names carry an opening name; bridged
       // plies are theory without a name of their own
       opening: named[i] ? named[i][1] : null,
@@ -403,6 +433,9 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
   const phases = {};
   for (const ph of ["opening", "middlegame", "endgame"]) phases[ph] = { w: accOf("w", ph), b: accOf("b", ph) };
 
+  const lossesOf = (color) =>
+    rows.filter((r) => r.color === color && !r.book).map((r) => r.loss);
+
   return {
     moves: out,
     accWhite: (accOf("w") || { acc: 100 }).acc,
@@ -410,6 +443,8 @@ export async function reviewGame(engine, moves, startFen, opts = {}) {
     // Accuracy split by game phase, so the report can say WHERE the play leaks.
     // Each entry is { acc, n } or null when the side had no non-book move there.
     phases,
+    // Rough per-side game-rating estimate (or null). See estimateElo for the caveats.
+    est: { w: estimateElo(lossesOf("w")), b: estimateElo(lossesOf("b")) },
     counts,
     opening,
   };

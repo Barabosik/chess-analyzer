@@ -33,8 +33,12 @@ const assessBestShown = () => page.evaluate(() => {
   t.ok("hanging the queen is named a hung piece", /queen/i.test(note) && /hangs/i.test(note), note);
   t.ok("a blunder suggests a stronger move", await assessBestShown(), "assessBest hidden on a blunder");
   await noteAt(6);                         // 3...Nxe5 wins the queen back — a best move
-  t.ok("a best move does not suggest a worse alternative", !(await assessBestShown()),
-    "assessBest shown on a best move");
+  // A brilliant/great move may now offer a "why it works" walk-through here; what
+  // must never appear is a WORSE move suggested as "was best".
+  const txt = await page.evaluate(() => document.getElementById("assessBest").textContent);
+  t.ok("a best move does not suggest a worse alternative",
+    !(await assessBestShown()) || !/was best/.test(txt),
+    "assessBest suggests: " + JSON.stringify(txt));
 }
 
 // --- allowed mate: Scholar's mate, 3...Nf6 lets Qxf7# in ---------------------

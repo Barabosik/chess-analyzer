@@ -56,6 +56,10 @@ export class Engine {
   _emit(line) { for (const fn of [...this.listeners]) fn(line); }
 
   setMultiPV(n) { this.post("setoption name MultiPV value " + n); }
+  fullStrength() {
+    this.post("setoption name UCI_LimitStrength value false");
+    this.post("setoption name Skill Level value 20");
+  }
 
   // Clear the transposition table. Without this a review's evaluations depend on
   // whatever was analysed before it, so the same game reviewed twice could come
@@ -93,6 +97,7 @@ export class Engine {
   async analyse(fen, { depth = 15, multipv = 1 } = {}) {
     await this.abort();
     this._busy = true;
+    this.fullStrength();   // never let a bot game's handicap leak into an evaluation
     this.setMultiPV(multipv);
     const stm = fen.split(" ")[1] || "w";
     return new Promise((res) => {
@@ -129,6 +134,7 @@ export class Engine {
   async live(fen, { multipv = 3, depth = 20, onUpdate } = {}) {
     await this.abort();
     this._busy = true;
+    this.fullStrength();   // same guard as analyse()
     this.setMultiPV(multipv);
     const stm = fen.split(" ")[1] || "w";
     const lines = {};
@@ -151,6 +157,39 @@ export class Engine {
   }
 
   stopLive() { return this.abort(); }
+
+  // One move at reduced strength, for the play-the-engine mode. Resolves to the
+  // bestmove UCI (or null on a game-over position).
+  //
+  // Strength is set for THIS search and reset the moment its bestmove arrives, so a
+  // review or live search can never inherit a weakened engine — that would be the
+  // quiet catastrophe here: every evaluation subtly wrong and nothing to say why.
+  // Stockfish's UCI_Elo floor is 1320; below that, Skill Level carries the rest.
+  // Time is fixed (movetime) rather than depth, because a weak opponent should also
+  // answer quickly — nobody wants a 600-rated bot that thinks for ten seconds.
+  async play(fen, { uciElo = null, skill = null, movetime = 300 } = {}) {
+    await this.abort();
+    this._busy = true;
+    if (uciElo) {
+      this.post("setoption name UCI_LimitStrength value true");
+      this.post("setoption name UCI_Elo value " + uciElo);
+    } else if (skill != null) {
+      this.post("setoption name Skill Level value " + skill);
+    }
+    return new Promise((res) => {
+      const fn = (l) => {
+        if (!l.startsWith("bestmove")) return;
+        this.off(fn);
+        this._busy = false;
+        this.fullStrength();
+        const bm = l.split(" ")[1];
+        res(!bm || bm === "(none)" ? null : bm);
+      };
+      this.on(fn);
+      this.post("position fen " + fen);
+      this.post("go movetime " + movetime);
+    });
+  }
 
   // Kill the worker outright and release its WASM heap. Used to tear the review pool
   // back down: six idle engines would hold hundreds of MB for a machine that has

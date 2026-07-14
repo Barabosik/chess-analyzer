@@ -60,7 +60,8 @@ function fnv1a(s) {
 
 export function reviewKey({ startFen, moves, depth, engine }) {
   const game = startFen + "|" + moves.map((m) => m.uci).join("");
-  return "v1|" + (engine || "?") + "|d" + depth + "|" + fnv1a(game) + "|" + moves.length;
+  // v2: reviews grew fields (est, afterLine, sacPiece, onlyGap) that v1 entries lack.
+  return "v2|" + (engine || "?") + "|d" + depth + "|" + fnv1a(game) + "|" + moves.length;
 }
 
 export async function getCached(key) {

@@ -47,6 +47,31 @@ a:hover{border-color:var(--accent)}
 .wrap{max-width:1180px;margin:0 auto;padding:18px 16px 40px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
 
+/* ============ mode bar ============ */
+.modebar{display:flex;gap:4px;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:4px;width:max-content;max-width:100%;box-shadow:var(--shadow)}
+.modetab{border:none;background:transparent;padding:8px 16px;border-radius:8px;font-weight:600;
+  font-size:13.5px;color:var(--muted)}
+.modetab:hover{color:var(--ink);border:none}
+.modetab.on{background:var(--accent);color:#fff}
+.modetab.on:hover{color:#fff}
+
+/* ============ play-the-engine setup ============ */
+.playsetup{padding:8px 16px 14px;margin-bottom:16px}
+.setuprow{display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap}
+.setupgrp .lab{margin-bottom:7px}
+.sidepick{display:flex;gap:6px}
+.pick.on{background:color-mix(in srgb,var(--accent) 18%,transparent);border-color:var(--accent);
+  color:var(--ink);font-weight:700}
+.setupnote{font-size:12px;color:var(--muted);line-height:1.6;margin:12px 0 0;max-width:64ch}
+
+/* the free-board / bot-game status bar under the board */
+.playbar{display:flex;align-items:center;gap:9px;margin-top:11px;padding:8px 11px;border-radius:10px;
+  background:var(--panel2);border:1px solid var(--line);flex-wrap:wrap}
+.play-txt{flex:1;min-width:0;font-size:13px}
+.play-txt b{font-weight:700}
+.playbar .mini{flex:none;font-weight:600}
+
 /* ============ top bar ============ */
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
 .brand{display:flex;align-items:center;gap:12px}
@@ -129,11 +154,24 @@ select#depthSel{width:100%}
 /* The wider right column gives the moves room to breathe, and shrinks the board
    just enough that board and move list fit on a laptop screen together. */
 .grid{display:grid;grid-template-columns:minmax(320px,1fr) 480px;gap:18px;align-items:start}
-@media (max-width:900px){.grid{grid-template-columns:1fr}}
 /* Grid and flex items are min-width:auto by default, so they refuse to shrink
-   below their content and shove the whole page sideways on a phone. */
-.grid > *{min-width:0}
-.rightcol{display:flex;flex-direction:column;gap:16px;min-width:0}
+   below their content and shove the whole page sideways on a phone. The cards
+   need it TOO: once the column wrappers dissolve (display:contents below), the
+   cards themselves become the grid items, and min-width:auto struck again —
+   a 484px board on a 390px phone. */
+.grid > *,.leftcol > *,.rightcol > *{min-width:0}
+.rightcol,.leftcol{display:flex;flex-direction:column;gap:16px;min-width:0}
+/* On one column, the left-column extras (graphs, legend) must not wedge themselves
+   between the board and the Analyze button / move list, so the wrappers dissolve
+   and the cards are ordered explicitly. */
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .leftcol,.rightcol{display:contents}
+  .boardcard{order:0}
+  .rightcol > *{order:1}
+  .leftcol .graphcard{order:2}
+  .leftcol .legendcard{order:3}
+}
 
 /* ============ board ============ */
 .boardcard{padding:16px}
@@ -193,6 +231,15 @@ select#depthSel{width:100%}
 .badge{position:absolute;top:3px;right:3px;width:min(19px,5.4cqw);height:min(19px,5.4cqw);border-radius:50%;display:flex;
   align-items:center;justify-content:center;font-family:var(--mono);font-size:min(10.5px,2.7cqw);font-weight:800;
   color:#fff;z-index:4;box-shadow:0 1px 4px rgba(0,0,0,.45);border:1.5px solid var(--panel)}
+
+/* ---- classification marks, drawn not typed (js/glyphs.js) ----
+   Font glyphs (★ ✓ ◇ !!) each come from a different fallback font and sit at a
+   different place in the em box, so every badge looked slightly off. An SVG in a
+   flex-centred box is centred by construction, on every platform. */
+.clsglyph{display:block;width:74%;height:74%}
+.badge .clsglyph{width:82%;height:82%}
+.cglyph .clsglyph{width:62%;height:62%}
+.fl-glyph .clsglyph{width:min(38px,9.5cqw);height:min(38px,9.5cqw)}
 
 .arrows{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
 
@@ -320,7 +367,7 @@ select#depthSel{width:100%}
 .dim{color:var(--muted);font-size:11px}
 .bestlink{cursor:pointer;color:var(--accent-ink);font-weight:700;border-bottom:1px dashed color-mix(in srgb,var(--accent) 55%,transparent)}
 .bestlink:hover{border-bottom-color:var(--accent)}
-.graphcard{margin-top:16px;padding:8px 14px 14px}
+.graphcard{padding:8px 14px 14px}   /* spacing comes from the column gap */
 .evalgraph{width:100%;height:100px;display:block;cursor:pointer;border-radius:8px;border:1px solid var(--line)}
 .evchip{font-family:var(--mono);font-size:11px;font-weight:700;background:var(--panel2);border:1px solid var(--line);
   border-radius:5px;padding:2px 6px;min-width:48px;text-align:center;flex:none}
@@ -362,6 +409,9 @@ select#depthSel{width:100%}
    can't be overlapped by a long SAN in a narrow column. */
 .mv .san{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mv .cg{flex:none;margin-left:auto;font-weight:800;font-size:12px}
+/* the marks worth celebrating get the weight they deserve, in the list too */
+.mv .cg.fat{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-weight:900;
+  font-size:13px;letter-spacing:-.04em;-webkit-text-stroke:.035em currentColor}
 .mv .ev{flex:none;color:var(--muted);font-size:11.5px;min-width:46px;text-align:right}
 .mv.empty{cursor:default}
 /* On a narrow column the eval numbers are the first thing to go — the move and
@@ -375,9 +425,11 @@ select#depthSel{width:100%}
 .accstrip .a b{display:block;font-family:var(--mono);font-size:19px;font-weight:700;line-height:1.15}
 .accstrip .a span{display:block;font-size:11px;color:var(--muted);margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* the rough game-rating estimate, under each accuracy */
+.accstrip .a .est{font-family:var(--mono);font-size:10.5px;color:var(--accent-ink);margin-top:3px}
 
 /* ============ legend / footer ============ */
-.legendcard{margin-top:16px;padding:8px 16px 16px}
+.legendcard{padding:8px 16px 16px}
 .legend{display:flex;flex-wrap:wrap;gap:9px 16px;font-size:12.5px;color:var(--muted)}
 .legitem{display:flex;align-items:center;gap:6px}
 .legitem .g{width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;

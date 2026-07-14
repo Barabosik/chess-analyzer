@@ -35,7 +35,10 @@ const snapshot = () => page.evaluate(() => {
   return {
     flourishes: document.querySelectorAll(".flourish").length,
     bubble: fl ? fl.querySelector(".fl-bubble").textContent : null,
-    glyph: fl ? fl.querySelector(".fl-glyph").textContent : null,
+    // the glyph is an SVG now (font glyphs centred differently in every fallback
+    // font); the mark it stands for travels in data-g
+    glyph: fl ? fl.querySelector(".fl-glyph").dataset.g : null,
+    glyphDrawn: fl ? !!fl.querySelector(".fl-glyph svg.clsglyph") : null,
     fillBg: fl ? getComputedStyle(fl.querySelector(".fl-fill")).backgroundColor : null,
     tinted: hl.length,
     tintCol: hl.length ? hl[0].style.getPropertyValue("--hl-col").trim() : null,
@@ -50,11 +53,36 @@ await stepOnto(BRILLIANT_PLY);
     "found " + s.flourishes);
   t.ok("the label reads 'Brilliant!'", s.bubble === "Brilliant!", "got " + s.bubble);
   t.ok("the glyph is the brilliant mark", s.glyph === "!!", "got " + s.glyph);
+  t.ok("the glyph is drawn as an SVG, not a font character", s.glyphDrawn === true,
+    "no svg.clsglyph inside .fl-glyph");
   t.ok("the fill is the brilliant teal (#26c2a3)", s.fillBg === "rgb(38, 194, 163)",
     "got " + s.fillBg);
   t.ok("both squares are tinted in the class colour", s.tinted === 2, "tinted " + s.tinted);
   t.ok("the resting tint is the brilliant colour", s.tintCol === "var(--brilliant)",
     "got " + s.tintCol);
+}
+
+// --- a Brilliant explains WHY it works, like a blunder explains what was better --
+{
+  const why = await page.evaluate(() => {
+    const box = document.getElementById("assessBest");
+    return { hidden: box.classList.contains("hidden"), text: box.textContent };
+  });
+  t.ok("the Brilliant offers a 'why it works' walk-through", !why.hidden && /why it works/i.test(why.text),
+    JSON.stringify(why));
+  const note = await page.evaluate(() => document.getElementById("assessNote").textContent);
+  t.ok("the coach note names the sacrificed piece", /bishop/.test(note), note);
+
+  await page.click("#assessBest");
+  await page.waitForTimeout(250);
+  const bar = await page.evaluate(() => ({
+    shown: !document.getElementById("explainBar").classList.contains("hidden"),
+    title: document.getElementById("readMove").textContent,
+  }));
+  t.ok("Explain opens on the follow-up line", bar.shown, JSON.stringify(bar));
+  t.ok("the readout says why, not 'best line'", /why/i.test(bar.title), bar.title);
+  await page.click("#explainDone");
+  await page.waitForTimeout(150);
 }
 
 // --- a plain move tints its squares but does NOT animate ---------------------

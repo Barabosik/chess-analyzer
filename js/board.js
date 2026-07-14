@@ -1,6 +1,7 @@
 // Renders a chess position from a FEN into a grid of squares, with last-move
 // highlight, a classification badge, coordinates, and optional click-to-move.
-import { CLASSES } from "./review.js?v=28";
+import { CLASSES } from "./review.js?v=29";
+import { glyphSvg } from "./glyphs.js?v=29";
 
 // cburnett SVG piece set (GPL). Path is relative to the HTML document base.
 const PIECES = "vendor/pieces/cburnett/";
@@ -60,7 +61,8 @@ export function renderBoard(el, fen, opts = {}) {
         const b = document.createElement("div");
         b.className = "badge";
         b.style.background = "var(" + CLASSES[badge.cls].v + ")";
-        b.textContent = CLASSES[badge.cls].g;
+        b.innerHTML = glyphSvg(badge.cls);   // SVG mark: centred by geometry, not by font luck
+        b.dataset.g = CLASSES[badge.cls].g;
         sq.appendChild(b);
       }
       if (dc === 0) {

@@ -1,12 +1,13 @@
-import { Chess } from "../vendor/chess.js?v=28";
-import { Engine } from "./engine.js?v=28";
-import { renderBoard } from "./board.js?v=28";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=28";
-import { rollup } from "./motifs.js?v=28";
-import { reviewKey, getCached, putCached } from "./cache.js?v=28";
-import { drawCard, cardName } from "./card.js?v=28";
+import { Chess } from "../vendor/chess.js?v=29";
+import { Engine } from "./engine.js?v=29";
+import { renderBoard } from "./board.js?v=29";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=29";
+import { rollup } from "./motifs.js?v=29";
+import { reviewKey, getCached, putCached } from "./cache.js?v=29";
+import { drawCard, cardName } from "./card.js?v=29";
+import { glyphSvg } from "./glyphs.js?v=29";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=28";
+  from "./onlinegames.js?v=29";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -60,8 +61,14 @@ const state = {
   // user draws. Cleared on any left interaction or navigation. arrowPreview is
   // the transient one that follows the cursor mid-drag.
   userArrows: [], userMarks: [], arrowPreview: null,
-  // The "Explain" walk-through: { ply, base, line:[uci], sans:[san], idx, eval }.
+  // The "Explain" walk-through: { ply, base, line:[uci], sans:[san], idx, eval, title }.
   explain: null,
+  // What the board is FOR right now: reviewing a game ("analyze"), moving both
+  // sides freely with the moves recorded ("solo"), or a game against a
+  // strength-limited engine ("bot").
+  mode: "analyze",
+  botPick: "w",          // the side chosen in the setup card
+  bot: null,             // { color, lvl, thinking, over, note } while a bot game exists
 };
 try {
   state.sound = localStorage.getItem("ca_sound") !== "0";
@@ -79,7 +86,8 @@ const el = {};
  "assessNote","assessBest","graphCard","evalGraph","openingName","soundToggle","shareBtn",
  "siteSel","userInput","loadUser","acctMsg","gameList",
  "shareBar","shareBtn2","shareKind","shareNote","timeCard","timeGraph","timeNote","accStrip",
- "impBar","impBody","impBarTxt","impToggle"]
+ "impBar","impBody","impBarTxt","impToggle",
+ "playSetup","botElo","botStart","pickWhite","pickBlack","playBar","playTxt","botResign","botRematch","soloReset"]
   .forEach((k) => (el[k] = $(k)));
 
 // ---------- helpers ----------
@@ -492,6 +500,8 @@ function renderMaterial(fen) {
   el.capB.innerHTML = capHtml(capByBlack, "w") + (diff < 0 ? '<span class="adv">+' + -diff + "</span>" : "");
 }
 
+const PIECE_LONG = { p: "a pawn", n: "a knight", b: "a bishop", r: "a rook", q: "your queen" };
+
 // Plain-English, coach-style note for a classified move.
 function coachNote(mv) {
   const b = mv.bestSan;
@@ -501,8 +511,12 @@ function coachNote(mv) {
   // shown separately below. Falls back to the generic line when no motif fired.
   if (mv.motif && mv.motif.text) return mv.motif.text;
   switch (mv.cls) {
-    case "brilliant": return "A brilliant stroke — you give up material for a decisive initiative.";
-    case "great": return "A great find — practically the only move that holds your advantage.";
+    // The rare good moves get the same specificity the bad ones do: name what was
+    // offered, and how forced the find was. The "why" walk-through sits below.
+    case "brilliant": return "A brilliant sacrifice — you offer " + (PIECE_LONG[mv.sacPiece] || "material") +
+      ", and taking it doesn't save your opponent: the follow-up keeps you on top.";
+    case "great": return "A great find — practically the only move that works here" +
+      (mv.onlyGap ? ": anything else gives up " + mv.onlyGap + "% of your winning chances." : ".");
     case "best": return check ? "The sharpest move — you keep the pressure on."
       : cap ? "The best move — you grab the key material." : "The strongest move in the position.";
     case "good": return "A sound, solid move — nothing lost.";
@@ -535,6 +549,17 @@ function renderAssessment() {
       (mv.bestLine && mv.bestLine.length ? '<span class="preview-hint">💡 Explain</span>' : "") +
       '<span class="evchip">' + fmtEval(mv.bestCpWhite, mv.bestMateWhite) + "</span>";
     el.assessBest.onclick = () => (mv.bestLine && mv.bestLine.length ? enterExplain(mv) : previewBest(mv));
+  } else if ((mv.cls === "brilliant" || mv.cls === "great") && mv.afterLine && mv.afterLine.length) {
+    // A brilliancy earns the same walk-through a blunder gets — but forwards: step
+    // through the engine's line FROM AFTER the move and watch the sacrifice hold.
+    el.assessBest.classList.remove("hidden");
+    el.assessBest.classList.add("clickable");
+    el.assessBest.innerHTML =
+      '<span class="cg" style="color:var(' + CLASSES[mv.cls].v + ')">' + CLASSES[mv.cls].g + "</span> " +
+      "<b>See why it works</b>" +
+      '<span class="preview-hint">💡 Explain</span>' +
+      '<span class="evchip">' + fmtEval(mv.cpWhite, mv.mateWhite) + "</span>";
+    el.assessBest.onclick = () => enterFollowUp(mv);
   } else { el.assessBest.classList.add("hidden"); el.assessBest.onclick = null; }
   el.assessBox.classList.remove("hidden");
 }
@@ -557,16 +582,17 @@ function previewBest(mv) {
   renderReadout(); renderAssessment(); restartLive();
 }
 
-// ---------- "Explain": walk the engine's best line one move at a time ----------
-// For any move that wasn't the best, press Explain to step through the line the
-// engine recommends — each ‹ › plays / takes back one move on the board, so you
-// can see WHY it's better. "Got it" returns to the review.
-function enterExplain(mv) {
-  if (!mv || !mv.bestLine || !mv.bestLine.length) return;
+// ---------- "Explain": walk an engine line one move at a time ----------
+// For a move that wasn't best, step through the line the engine recommends INSTEAD
+// (from before the move). For a brilliant/great move, step through the line that
+// follows it, to see why it holds. Each ‹ › plays / takes back one move on the
+// board. "Got it" returns to the review.
+function enterWalkthrough(baseFen, uciLine, evalStr, title) {
+  if (!uciLine || !uciLine.length) return;
   playToken++;
-  const chess = new Chess(mv.fenBefore);
+  const chess = new Chess(baseFen);
   const line = [], sans = [];
-  for (const uci of mv.bestLine) {
+  for (const uci of uciLine) {
     let m;
     try { m = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4, 5) || undefined }); }
     catch (e) { break; }
@@ -575,11 +601,18 @@ function enterExplain(mv) {
     if (line.length >= 12) break;                 // enough to make the point, still digestible
   }
   if (!line.length) return;
-  state.explain = { ply: state.ply, base: mv.fenBefore, line, sans, idx: 1,
-    eval: fmtEval(mv.bestCpWhite, mv.bestMateWhite) };
+  state.explain = { ply: state.ply, base: baseFen, line, sans, idx: 1, eval: evalStr, title };
   state.selected = null;
   el.exploreBar.classList.add("hidden");
   renderExplain(true);
+}
+function enterExplain(mv) {
+  if (!mv) return;
+  enterWalkthrough(mv.fenBefore, mv.bestLine, fmtEval(mv.bestCpWhite, mv.bestMateWhite), "The best line");
+}
+function enterFollowUp(mv) {
+  if (!mv) return;
+  enterWalkthrough(mv.fenAfter, mv.afterLine, fmtEval(mv.cpWhite, mv.mateWhite), "Why " + mv.san + " works");
 }
 
 function renderExplain(animate) {
@@ -883,7 +916,9 @@ function loadGame(parsed) {
   renderMoveList();
   el.summary.classList.add("hidden");
   el.accStrip.classList.add("hidden");
+  el.phases.classList.add("hidden");
   el.reviewBtn.disabled = !state.moves.length || !state.booted;
+  renderModeUi();          // mode-owned visibility (import card, play bar, review lock)
   goto(0);
 }
 
@@ -935,7 +970,8 @@ function renderMoveList() {
         let inner = '<span class="san">' + mv.san + "</span>";
         if (state.reviewed) {
           const cl = CLASSES[mv.cls];
-          inner += '<span class="cg" style="color:var(' + cl.v + ')">' + cl.g + "</span>";
+          const fat = mv.cls === "brilliant" || mv.cls === "great" ? " fat" : "";
+          inner += '<span class="cg' + fat + '" style="color:var(' + cl.v + ')">' + cl.g + "</span>";
           inner += '<span class="ev">' + fmtEval(mv.cpWhite, mv.mateWhite) + "</span>";
         }
         cell.innerHTML = inner;
@@ -984,9 +1020,14 @@ function renderSummary() {
   const R = state.review;
   el.summary.classList.remove("hidden");
   // Headline accuracies stay up beside the board; the breakdown lives below.
+  // Each side also gets its rough game-rating estimate (see estimateElo for the
+  // long list of caveats — the ratingnote below the breakdown repeats the short one).
+  const est = (v) => (v == null ? "" : '<span class="est">game rating ≈ ' + v + "</span>");
   el.accStrip.innerHTML =
-    '<div class="a"><b>' + R.accWhite + "%</b><span>" + esc(state.headers.White || "White") + "</span></div>" +
-    '<div class="a"><b>' + R.accBlack + "%</b><span>" + esc(state.headers.Black || "Black") + "</span></div>";
+    '<div class="a"><b>' + R.accWhite + "%</b><span>" + esc(state.headers.White || "White") + "</span>" +
+      est(R.est && R.est.w) + "</div>" +
+    '<div class="a"><b>' + R.accBlack + "%</b><span>" + esc(state.headers.Black || "Black") + "</span>" +
+      est(R.est && R.est.b) + "</div>";
   el.accStrip.classList.remove("hidden");
   renderPhases();
   renderTimeNote();
@@ -997,7 +1038,7 @@ function renderSummary() {
     const row = document.createElement("div");
     row.className = "countrow";
     row.innerHTML =
-      '<span class="g" style="background:var(' + CLASSES[k].v + ')">' + CLASSES[k].g + "</span>" +
+      '<span class="g" style="background:var(' + CLASSES[k].v + ')">' + glyphSvg(k) + "</span>" +
       '<span class="cl">' + CLASSES[k].label + "</span>" +
       '<span class="cw">' + w + "</span><span class=\"cb\">" + b + "</span>";
     el.counts.appendChild(row);
@@ -1026,7 +1067,7 @@ function renderReadout() {
   if (state.explain) {
     el.readGlyph.style.background = "var(--best)";
     el.readGlyph.textContent = "★";
-    el.readMove.textContent = "The best line";
+    el.readMove.textContent = state.explain.title || "The best line";
     el.readSub.innerHTML = "Step through it with <b>‹ ›</b>. Press <b>✓ Got it</b> to return.";
     return;
   }
@@ -1035,6 +1076,16 @@ function renderReadout() {
     el.readGlyph.textContent = "⌕";
     el.readMove.textContent = "Analysis line";
     el.readSub.innerHTML = "Exploring a variation. <b>Return to game</b> to resume review.";
+    return;
+  }
+  // A live bot game: the coach card is the "whose move is it" line, and nothing
+  // more — the engine's opinions stay out of a competitive game.
+  if (state.bot && !state.bot.over) {
+    el.readGlyph.style.background = "var(--accent)";
+    el.readGlyph.textContent = "⚔";
+    el.readMove.textContent = "You vs " + botName(state.bot);
+    el.readSub.innerHTML = state.bot.thinking ? "Stockfish is thinking…"
+      : "<b>Your move</b> — drag a piece or click it.";
     return;
   }
   const mv = state.ply > 0 ? state.moves[state.ply - 1] : null;
@@ -1048,7 +1099,7 @@ function renderReadout() {
   if (state.reviewed) {
     const cl = CLASSES[mv.cls];
     el.readGlyph.style.background = "var(" + cl.v + ")";
-    el.readGlyph.textContent = cl.g;
+    el.readGlyph.innerHTML = glyphSvg(mv.cls);   // drawn mark, centred by geometry
     el.readMove.textContent = mv.moveNo + (mv.color === "w" ? ". " : "... ") + mv.san + "  —  " + cl.label;
     let sub = "Eval " + fmtEval(mv.cpWhite, mv.mateWhite);
     if (mv.spent != null) sub += " · took " + fmtSecs(mv.spent);
@@ -1103,7 +1154,9 @@ function flourish(mv) {
   wrap.className = "flourish";
   wrap.style.setProperty("--fl-col", "var(" + CLASSES[mv.cls].v + ")");
   const fill = document.createElement("div"); fill.className = "fl-fill";
-  const glyph = document.createElement("div"); glyph.className = "fl-glyph"; glyph.textContent = CLASSES[mv.cls].g;
+  const glyph = document.createElement("div"); glyph.className = "fl-glyph";
+  glyph.innerHTML = glyphSvg(mv.cls);
+  glyph.dataset.g = CLASSES[mv.cls].g;
   const bubble = document.createElement("div"); bubble.className = "fl-bubble"; bubble.textContent = FLOURISH[mv.cls];
   if (row === 0) bubble.classList.add("below");
   if (col <= 1) bubble.classList.add("right");
@@ -1186,6 +1239,14 @@ function goto(ply) {
 // Play from -> to on the exploration board. `animate` is off for drags, where
 // the user's hand has already carried the piece across.
 function tryPlayMove(from, to, animate) {
+  // Outside plain analysis a board move is a move IN the game — unless a
+  // walk-through or a clicked engine line is open, or a finished bot game is being
+  // analysed, where the usual exploration branching applies.
+  if (state.mode !== "analyze" && !state.explore && !state.explain && !(state.bot && state.bot.over)) {
+    if (state.mode === "bot" && !state.bot) return false;         // no game yet: board is idle
+    if (botActive() && state.bot.thinking) return false;          // wait for the reply
+    return commitMove(from, to, null, animate);
+  }
   const fen = currentFen();
   const c = new Chess(fen);
   let mv;
@@ -1209,7 +1270,12 @@ function tryPlayMove(from, to, animate) {
 function pieceCanMove(fen, square) {
   const c = new Chess(fen);
   const piece = c.get(square);
-  return !!piece && piece.color === (fen.split(" ")[1] || "w");
+  if (!piece || piece.color !== (fen.split(" ")[1] || "w")) return false;
+  // In a live bot game only the player's pieces answer to the hand, and only
+  // while the engine isn't thinking. Before a game starts, the board is idle.
+  if (botActive() && (state.bot.thinking || piece.color !== state.bot.color)) return false;
+  if (state.mode === "bot" && !state.bot) return false;
+  return true;
 }
 
 let lastDropAt = 0;   // swallows the click a completed drag leaves behind
@@ -1388,6 +1454,201 @@ function returnToGame() {
   goto(state.ply);
 }
 
+// ---------- modes: analyze / free board / play the engine ----------
+// "analyze" is the app as it always was. "solo" records the moves you make (both
+// sides) as THE game, so you can lay out a line by hand and press Analyze on it.
+// "bot" is a game against a strength-limited Stockfish — with the engine's mouth
+// taped shut until it ends: no eval bar, no live lines, no review button.
+
+// The engine's UCI_Elo floor is 1320, so the club-strength settings use it directly
+// and the lower ones fall back to Skill Level. Weak settings also answer fast — a
+// beginner bot that thinks for seconds reads as strong even when it isn't.
+const BOT_LEVELS = [
+  { label: "≈ 600 · just the rules", elo: 600, skill: 0, mt: 120 },
+  { label: "≈ 800 · casual", elo: 800, skill: 2, mt: 150 },
+  { label: "≈ 1000 · improving", elo: 1000, skill: 4, mt: 200 },
+  { label: "≈ 1200 · club beginner", elo: 1200, skill: 6, mt: 250 },
+  { label: "≈ 1400 · club player", elo: 1400, uciElo: 1400, mt: 300 },
+  { label: "≈ 1700 · strong club", elo: 1700, uciElo: 1700, mt: 350 },
+  { label: "≈ 2000 · expert", elo: 2000, uciElo: 2000, mt: 400 },
+  { label: "≈ 2300 · master", elo: 2300, uciElo: 2300, mt: 500 },
+  { label: "≈ 2700 · grandmaster", elo: 2700, uciElo: 2700, mt: 700 },
+];
+
+const botActive = () => !!(state.bot && !state.bot.over);
+const botName = (bot) => "Stockfish (≈" + bot.lvl.elo + ")";
+
+function setMode(mode) {
+  if (mode === state.mode) {
+    // Re-clicking "Play the engine" after a finished game brings the setup back.
+    if (mode === "bot" && state.bot && state.bot.over) { state.bot = null; renderModeUi(); renderReadout(); }
+    return;
+  }
+  if (botActive()) state.bot = null;          // switching modes abandons a live bot game
+  state.mode = mode;
+  document.querySelectorAll(".modetab").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+  state.explore = null;
+  el.exploreBar.classList.add("hidden");
+  if (state.explain) exitExplain();
+  renderModeUi();
+  renderReadout();
+  restartLive();
+}
+
+function renderModeUi() {
+  const active = botActive();
+  document.querySelector(".import").classList.toggle("hidden", state.mode !== "analyze");
+  el.playSetup.classList.toggle("hidden", state.mode !== "bot" || !!state.bot);
+  el.playBar.classList.toggle("hidden", state.mode === "analyze" || (state.mode === "bot" && !state.bot));
+  el.soloReset.classList.toggle("hidden", state.mode !== "solo");
+  el.botResign.classList.toggle("hidden", !active);
+  el.botRematch.classList.toggle("hidden", !(state.mode === "bot" && state.bot && state.bot.over));
+  // Competitive silence: while a bot game is on, every engine voice is off.
+  el.live.classList.toggle("hidden", active);
+  document.querySelector(".evalbar").classList.toggle("hidden", active);
+  el.reviewBtn.disabled = !state.moves.length || !state.booted || active;
+  if (state.mode === "solo") {
+    el.playTxt.innerHTML = "<b>Free board</b> — you move both sides, and every move joins the game.";
+  } else if (state.mode === "bot" && state.bot) {
+    el.playTxt.innerHTML = state.bot.over
+      ? "<b>" + esc(state.bot.note || "Game over") + "</b> — the review is unlocked."
+      : "Playing <b>" + esc(botName(state.bot)) + "</b> as " + (state.bot.color === "w" ? "White" : "Black") + ".";
+  }
+}
+
+function startBot() {
+  if (!state.booted) return;
+  const lvl = BOT_LEVELS[+el.botElo.value] || BOT_LEVELS[3];
+  const color = state.botPick;
+  state.bot = { color, lvl, thinking: false, over: false, note: null };
+  loadGame({
+    headers: {
+      White: color === "w" ? "You" : botName(state.bot),
+      Black: color === "b" ? "You" : botName(state.bot),
+      Date: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+      Result: "*",
+    },
+    moves: [], startFen: DEFAULT_FEN,
+  });
+  state.flip = color === "b";
+  renderModeUi();
+  drawBoard();
+  renderReadout();
+  if (color === "b") botMove();
+}
+
+async function botMove() {
+  const bot = state.bot;
+  if (!bot || bot.over || bot.thinking) return;
+  bot.thinking = true;
+  renderReadout();
+  const fen = state.moves.length ? state.moves[state.moves.length - 1].fenAfter : state.startFen;
+  let uci = null;
+  try {
+    uci = await state.engine.play(fen, { uciElo: bot.lvl.uciElo, skill: bot.lvl.skill, movetime: bot.lvl.mt });
+  } catch (e) { /* a dead engine just never answers; the game simply stalls visibly */ }
+  bot.thinking = false;
+  if (state.bot !== bot || bot.over) return;    // resigned / abandoned while it thought
+  if (uci) commitMove(uci.slice(0, 2), uci.slice(2, 4), uci.slice(4, 5) || null, true);
+  renderReadout();
+}
+
+// Play a move INTO the game (free board and bot games) rather than into an
+// exploration branch: the move list grows, the review is invalidated, and — on the
+// free board only — moving from an earlier position rewrites the game from there.
+function commitMove(from, to, promo, animate) {
+  if (state.ply < state.moves.length) {
+    if (state.mode === "bot") { goto(state.moves.length); return false; }  // move at the end
+    state.moves = state.moves.slice(0, state.ply);
+  }
+  const fen = state.moves.length ? state.moves[state.moves.length - 1].fenAfter : state.startFen;
+  const c = new Chess(fen);
+  let m;
+  try { m = c.move({ from, to, promotion: promo || "q" }); }
+  catch (e) { return false; }
+  if (!m) return false;
+  invalidateReview();
+  state.moves.push({
+    san: m.san, from: m.from, to: m.to, uci: m.from + m.to + (m.promotion || ""),
+    color: m.color, fenBefore: fen, fenAfter: c.fen(),
+    // the FEN's own fullmove counter, so a game grown from a FEN numbers correctly
+    moveNo: parseInt(fen.split(" ")[5] || "1", 10),
+  });
+  el.pgnInput.value = gamePgn();   // sharing / re-importing works like a pasted game
+  renderMoveList();
+  renderShareBar();
+  renderModeUi();                  // the first committed move unlocks Analyze (solo)
+  goto(state.moves.length);
+  if (botActive()) afterBotPly(c);
+  return true;
+}
+
+// A committed move ended a review's validity: the game it reviewed no longer exists.
+function invalidateReview() {
+  if (!state.reviewed && !state.review) return;
+  state.reviewed = false;
+  state.review = null;
+  el.summary.classList.add("hidden");
+  el.accStrip.classList.add("hidden");
+  el.phases.classList.add("hidden");
+  el.graphCard.classList.add("hidden");
+  el.timeCard.classList.add("hidden");
+  el.cardBtn.classList.add("hidden");
+  el.cardCopyBtn.classList.add("hidden");
+  window.__card = null;
+}
+
+// After any committed ply of a bot game: is it over, and whose turn is it?
+function afterBotPly(c) {
+  if (!botActive()) return;
+  const bot = state.bot;
+  if (c.isGameOver()) {
+    let result = "1/2-1/2", note = "Draw";
+    if (c.isCheckmate()) {
+      const winner = c.turn() === "w" ? "b" : "w";
+      result = winner === "w" ? "1-0" : "0-1";
+      note = (winner === bot.color ? "You won" : "Stockfish won") + " by checkmate";
+    } else if (c.isStalemate()) note = "Draw by stalemate";
+    else if (c.isThreefoldRepetition()) note = "Draw by repetition";
+    else if (c.isInsufficientMaterial()) note = "Draw — insufficient material";
+    endBotGame(result, note);
+  } else if (c.turn() !== bot.color) {
+    botMove();
+  }
+}
+
+function endBotGame(result, note) {
+  const bot = state.bot;
+  if (!bot || bot.over) return;
+  bot.over = true;
+  bot.note = note;
+  state.headers.Result = result;
+  state.headers.Termination = note;
+  el.pgnInput.value = gamePgn();
+  renderHeader();
+  renderModeUi();     // review button unlocks, eval bar and live panel come back
+  renderReadout();
+  renderShareBar();
+  restartLive();
+}
+
+// A PGN of the game grown on the board, so share links and re-imports just work.
+function gamePgn() {
+  const h = state.headers || {};
+  const tags = [];
+  for (const k of ["White", "Black", "Date", "Result", "Termination"]) {
+    if (h[k]) tags.push("[" + k + ' "' + String(h[k]).replace(/"/g, "") + '"]');
+  }
+  if (state.startFen !== DEFAULT_FEN) tags.push('[SetUp "1"]', '[FEN "' + state.startFen + '"]');
+  let body = "";
+  state.moves.forEach((m, i) => {
+    if (m.color === "w") body += (body ? " " : "") + m.moveNo + ". " + m.san;
+    else body += (i === 0 ? m.moveNo + "... " : " ") + m.san;
+  });
+  if (h.Result && h.Result !== "*") body += (body ? " " : "") + h.Result;
+  return tags.join("\n") + "\n\n" + body + "\n";
+}
+
 // ---------- live engine ----------
 // Debounced + generation-guarded so rapid navigation never overlaps engine
 // searches (overlapping stop/position/go corrupts the WASM engine).
@@ -1395,7 +1656,8 @@ let liveGen = 0;
 let liveTimer = null;
 function restartLive() {
   clearTimeout(liveTimer);
-  if (!state.booted || !state.live || state.reviewing || document.hidden) return;
+  // botActive: no engine commentary during a competitive game.
+  if (!state.booted || !state.live || state.reviewing || document.hidden || botActive()) return;
   const gen = ++liveGen;
   liveTimer = setTimeout(async () => {
     if (gen !== liveGen || state.reviewing || !state.live || document.hidden) return;
@@ -1446,7 +1708,7 @@ function renderLive(fen, lines) {
 
 // ---------- review ----------
 async function runReview() {
-  if (!state.moves.length || !state.booted || state.reviewing) return;
+  if (!state.moves.length || !state.booted || state.reviewing || botActive()) return;
 
   // A review is a pure function of (game, depth, engine), so the same game at the same
   // depth never has to be analysed twice. Re-opening a game used to re-run ~100 engine
@@ -1601,6 +1863,7 @@ async function boot() {
   el.engineStatus.textContent = "ready";
   el.engineStatus.classList.add("ok");
   el.reviewBtn.disabled = !state.moves.length;
+  renderModeUi();
   restartLive();
 }
 
@@ -1621,6 +1884,30 @@ function bind() {
   el.reviewBtn.onclick = () => { state.reviewing ? (state.cancel.cancelled = true) : runReview(); };
   el.cardBtn.onclick = saveCard;
   el.cardCopyBtn.onclick = copyCard;
+
+  // ---- modes ----
+  document.querySelectorAll(".modetab").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+  const pickSide = (c) => {
+    state.botPick = c;
+    el.pickWhite.classList.toggle("on", c === "w");
+    el.pickBlack.classList.toggle("on", c === "b");
+  };
+  el.pickWhite.onclick = () => pickSide("w");
+  el.pickBlack.onclick = () => pickSide("b");
+  BOT_LEVELS.forEach((l, i) => {
+    const o = document.createElement("option");
+    o.value = i;
+    o.textContent = l.label;
+    el.botElo.appendChild(o);
+  });
+  el.botElo.value = "3";   // ≈1200 — a humble default beats an insulting one
+  el.botStart.onclick = startBot;
+  el.botRematch.onclick = () => { if (state.mode === "bot") startBot(); };
+  el.botResign.onclick = () => {
+    if (!botActive()) return;
+    endBotGame(state.bot.color === "w" ? "0-1" : "1-0", "You resigned");
+  };
+  el.soloReset.onclick = () => loadGame({ headers: {}, moves: [], startFen: DEFAULT_FEN });
 
   $("loadPgn").onclick = () => {
     const txt = el.pgnInput.value.trim();
@@ -1726,7 +2013,7 @@ function buildLegend() {
   for (const k of CLASS_ORDER) {
     const it = document.createElement("div");
     it.className = "legitem";
-    it.innerHTML = '<span class="g" style="background:var(' + CLASSES[k].v + ')">' + CLASSES[k].g +
+    it.innerHTML = '<span class="g" style="background:var(' + CLASSES[k].v + ')">' + glyphSvg(k) +
       "</span>" + CLASSES[k].label;
     box.appendChild(it);
   }

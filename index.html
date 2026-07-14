@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=28" />
+  <link rel="stylesheet" href="css/style.css?v=29" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -26,6 +26,35 @@
         <button class="ghost" id="themeToggle" title="Toggle light / dark">◐</button>
       </div>
     </header>
+
+    <!-- What are we doing: reviewing a played game, moving pieces freely, or playing
+         the engine? One switch, so each mode can show only what belongs to it. -->
+    <nav class="modebar" id="modeBar" role="tablist" aria-label="Mode">
+      <button class="modetab on" data-mode="analyze" role="tab">Analyze a game</button>
+      <button class="modetab" data-mode="solo" role="tab">Free board</button>
+      <button class="modetab" data-mode="bot" role="tab">Play the engine</button>
+    </nav>
+
+    <!-- Play-the-engine setup. Replaces the import card while choosing. -->
+    <section class="card playsetup hidden" id="playSetup">
+      <div class="sectlabel">Play against Stockfish</div>
+      <div class="setuprow">
+        <div class="setupgrp">
+          <label class="lab">You play</label>
+          <div class="sidepick">
+            <button class="pick on" id="pickWhite">⚪ White</button>
+            <button class="pick" id="pickBlack">⚫ Black</button>
+          </div>
+        </div>
+        <div class="setupgrp">
+          <label class="lab" for="botElo">Strength</label>
+          <select id="botElo"></select>
+        </div>
+        <button class="primary" id="botStart">Start game</button>
+      </div>
+      <p class="setupnote">It's competitive, so the engine keeps quiet while you play: no eval bar,
+        no lines, no hints. The moment the game ends (or you resign) the full review unlocks.</p>
+    </section>
 
     <!-- Import -->
     <section class="card import">
@@ -79,7 +108,10 @@
     </section>
 
     <div class="grid">
-      <!-- LEFT: board -->
+      <!-- LEFT: the board, and everything game-wide that reads top to bottom with it.
+           The graphs and the legend used to sit BELOW the whole grid, which left the
+           left column empty under the share bar while the right one ran on. -->
+      <div class="leftcol">
       <section class="card boardcard">
         <div class="ghead">
           <h2 class="serif" id="hdrTitle">–</h2>
@@ -116,6 +148,15 @@
           <span class="expl-label">Line</span>
           <span class="expl-txt mono" id="exploreTxt"></span>
           <button id="returnGame" class="mini">Return to game</button>
+        </div>
+
+        <!-- Free-board / play-the-engine status: what's happening, and the one action
+             that belongs to it (reset / resign / rematch). -->
+        <div class="playbar hidden" id="playBar">
+          <span class="play-txt" id="playTxt"></span>
+          <button class="mini hidden" id="soloReset">↺ Reset board</button>
+          <button class="mini hidden" id="botResign">🏳 Resign</button>
+          <button class="mini hidden" id="botRematch">↻ Rematch</button>
         </div>
 
         <!-- One move, one card. The verdict, the engine's better move, and the
@@ -158,6 +199,28 @@
           <span class="sharenote hidden" id="shareNote"></span>
         </div>
       </section>
+
+      <section class="card graphcard hidden" id="graphCard">
+        <div class="sectlabel">Evaluation over the game</div>
+        <canvas id="evalGraph" class="evalgraph"></canvas>
+      </section>
+
+      <section class="card graphcard hidden" id="timeCard">
+        <div class="sectlabel">Time spent per move</div>
+        <canvas id="timeGraph" class="evalgraph"></canvas>
+        <p class="timenote hidden" id="timeNote"></p>
+      </section>
+
+      <section class="card legendcard">
+        <div class="sectlabel">Move classification</div>
+        <div class="legend" id="legend"></div>
+        <p class="note">
+          Evaluations by <b id="footEngine">Stockfish 18 (lite)</b> from White's point of view (+ favors White).
+          Accuracy and labels are engine-derived estimates. <b>Brilliant</b> = a sound sacrifice;
+          <b>Great</b> = a critical only-move. Nothing leaves your device — the engine runs locally via WebAssembly.
+        </p>
+      </section>
+      </div><!-- /leftcol -->
 
       <!-- RIGHT -->
       <div class="rightcol">
@@ -221,40 +284,20 @@
           <div class="counts" id="counts"></div>
           <p class="motifnote hidden" id="motifNote"></p>
           <div class="ratingnote">
-            Accuracy is how close the game was to engine-perfect. It is <b>not</b> a rating —
-            checked against 64 real games, a single game's accuracy misses the player's actual
-            Elo by ~850 points even at best, so none is estimated from it.
+            The <b>game rating</b> is a rough read of this one game, not the player's Elo:
+            checked against 64 real games, single-game estimates miss the true rating by
+            several hundred points either way (a quiet game reads too strong, a sharp one
+            too weak). Trends across many games mean something; one number does not.
           </div>
         </section>
       </div>
     </div>
-
-    <section class="card graphcard hidden" id="graphCard">
-      <div class="sectlabel">Evaluation over the game</div>
-      <canvas id="evalGraph" class="evalgraph"></canvas>
-    </section>
-
-    <section class="card graphcard hidden" id="timeCard">
-      <div class="sectlabel">Time spent per move</div>
-      <canvas id="timeGraph" class="evalgraph"></canvas>
-      <p class="timenote hidden" id="timeNote"></p>
-    </section>
-
-    <section class="card legendcard">
-      <div class="sectlabel">Move classification</div>
-      <div class="legend" id="legend"></div>
-      <p class="note">
-        Evaluations by <b id="footEngine">Stockfish 18 (lite)</b> from White's point of view (+ favors White).
-        Accuracy and labels are engine-derived estimates. <b>Brilliant</b> = a sound sacrifice;
-        <b>Great</b> = a critical only-move. Nothing leaves your device — the engine runs locally via WebAssembly.
-      </p>
-    </section>
 
     <footer class="foot">
       <span>Powered by <a href="https://github.com/official-stockfish/Stockfish">Stockfish</a> (GPLv3) compiled to WebAssembly, and <a href="https://github.com/jhlywa/chess.js">chess.js</a>.</span>
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=28"></script>
+  <script type="module" src="js/app.js?v=29"></script>
 </body>
 </html>

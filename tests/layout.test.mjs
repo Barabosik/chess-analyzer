@@ -72,6 +72,27 @@ const strip = await page.evaluate(() => {
 ok("accuracy headline stays up top next to the board", !strip.hidden && /%/.test(strip.text),
   JSON.stringify(strip.text));
 
+// Each side gets its rough game-rating estimate under the accuracy.
+const est = await page.evaluate(() =>
+  [...document.querySelectorAll("#accStrip .a .est")].map((e) => e.textContent));
+ok("both players get a game-rating estimate", est.length === 2 && est.every((t) => /≈ \d{3,4}/.test(t)),
+  est.join(" | ") || "none");
+
+// The breakdown marks are SVGs (font glyphs sat off-centre, each in its own way).
+const glyphs = await page.evaluate(() => ({
+  breakdown: document.querySelectorAll("#counts .g svg.clsglyph").length,
+  legend: document.querySelectorAll("#legend .g svg.clsglyph").length,
+}));
+ok("all 9 breakdown and legend marks are drawn as SVGs",
+  glyphs.breakdown === 9 && glyphs.legend === 9, JSON.stringify(glyphs));
+
+// The graphs and legend live in the LEFT column now — the space under the board
+// used to sit empty while the right column ran on.
+const inLeft = await page.evaluate(() =>
+  ["graphCard", "timeCard"].every((id) => !!document.getElementById(id).closest(".leftcol")) &&
+  !!document.querySelector(".leftcol .legendcard"));
+ok("eval graph, time graph and legend fill the left column", inLeft);
+
 // THE OVERLAP: does any SAN visually collide with its classification glyph?
 const overlaps = await page.evaluate(() => {
   const bad = [];
