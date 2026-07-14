@@ -433,6 +433,15 @@ confidence ≥ 0.10); an implausible read opens the editor EMPTY with a plain "c
 the board" message instead. The honest limit stands: without real in-image board
 detection it needs a tight crop, and it says so.
 
+**In-image board detection: attempted, measured, rejected.** To let a full-window paste
+find the board itself, a search scored candidate 8×8 boxes by how cleanly their 64 corner
+samples split into a light and a dark group. It doesn't work: a chessboard is
+self-similar, so a box off by a fraction of a cell (or a whole cell) still scores as a
+checkerboard but slices the squares wrong, and the search regressed even tight boards (a
+sparse endgame read as garbage). Robust detection needs gridline projection with sub-pixel
+peak fitting, a project of its own. Same disposition as the multithreading section:
+measured, worse, dropped. The recognizer stays crop-first.
+
 **The confirm-board is the reliable half, and is useful on its own** — pick a piece, click
 squares, set who is to move, analyze; the first way to build an arbitrary position without
 typing a FEN. Castling rights are not in a still image, so they are inferred (a side keeps

@@ -1,15 +1,15 @@
-import { Chess } from "../vendor/chess.js?v=33";
-import { Engine } from "./engine.js?v=33";
-import { renderBoard } from "./board.js?v=33";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=33";
-import { rollup } from "./motifs.js?v=33";
-import { reviewKey, getCached, putCached } from "./cache.js?v=33";
-import { drawCard, cardName } from "./card.js?v=33";
-import { glyphSvg } from "./glyphs.js?v=33";
+import { Chess } from "../vendor/chess.js?v=34";
+import { Engine } from "./engine.js?v=34";
+import { renderBoard } from "./board.js?v=34";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=34";
+import { rollup } from "./motifs.js?v=34";
+import { reviewKey, getCached, putCached } from "./cache.js?v=34";
+import { drawCard, cardName } from "./card.js?v=34";
+import { glyphSvg } from "./glyphs.js?v=34";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=33";
-import { lookupPosition, RATING_BANDS } from "./explorer.js?v=33";
-import { scanBoard, gridToFen } from "./boardscan.js?v=33";
+  from "./onlinegames.js?v=34";
+import { lookupPosition, RATING_BANDS } from "./explorer.js?v=34";
+import { scanBoard, gridToFen } from "./boardscan.js?v=34";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 

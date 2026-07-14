@@ -1,8 +1,8 @@
 // Full-game review: runs the engine over every position, classifies each move,
 // and estimates per-side accuracy. Scores throughout are White's POV.
-import { Chess } from "../vendor/chess.js?v=33";
-import { OPENINGS } from "../vendor/openings.js?v=33";
-import { explainMove } from "./motifs.js?v=33";
+import { Chess } from "../vendor/chess.js?v=34";
+import { OPENINGS } from "../vendor/openings.js?v=34";
+import { explainMove } from "./motifs.js?v=34";
 
 export const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 

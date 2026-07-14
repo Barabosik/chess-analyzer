@@ -70,6 +70,33 @@ const gotMargin = await scanFen(START, { margin: 60 });
 t.ok("auto-trims a solid margin, then reads the board (>=60/64)", agree(gotMargin, START) >= 60,
   "got " + gotMargin + " (" + agree(gotMargin, START) + "/64)");
 
+// --- a board embedded in a full "app screenshot" is REFUSED, not misread ------------
+// In-image board detection was measured and rejected (see boardscan.js), so a board with
+// busy chrome around it can't be aligned — the honest outcome is a refusal, never a
+// garbage read the user has to clear.
+const embedded = await page.evaluate(async (boardField) => {
+  const S = 56, ox = 190, oy = 70, BW = 900, BH = 620;
+  const cv = document.createElement("canvas");
+  cv.width = BW; cv.height = BH;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#14171b"; ctx.fillRect(0, 0, BW, BH);
+  ctx.fillStyle = "#1e232b"; ctx.fillRect(ox + 8 * S + 30, 70, 260, 8 * S);
+  ctx.fillStyle = "#2a3038"; for (let i = 0; i < 400; i++) ctx.fillRect(Math.random() * BW, Math.random() * BH, 6, 3);
+  const grid = boardField.split("/").map((fr) => {
+    const a = []; for (const ch of fr) { if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) a.push(null); else a.push(ch); } return a;
+  });
+  const load = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    ctx.fillStyle = (r + c) % 2 === 0 ? "#f0d9b5" : "#b58863";
+    ctx.fillRect(ox + c * S, oy + r * S, S, S);
+    const p = grid[r][c];
+    if (p) { const img = await load("vendor/pieces/cburnett/" + (p === p.toUpperCase() ? "w" : "b") + p.toUpperCase() + ".svg"); ctx.drawImage(img, ox + c * S, oy + r * S, S, S); }
+  }
+  const { scanBoard } = await import("/js/boardscan.js?v=33");
+  return (await scanBoard(cv)).plausible;
+}, START);
+t.ok("refuses a board buried in app chrome (no garbage read)", embedded === false, "plausible=" + embedded);
+
 // --- a non-board image is refused, not read as 64 random pieces ----------------------
 const garbage = await page.evaluate(async () => {
   const cv = document.createElement("canvas");

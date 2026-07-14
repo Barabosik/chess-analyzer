@@ -143,9 +143,19 @@ function autoTrim(px, W, H) {
   return { x: left, y: top, w, h };
 }
 
-// Scan a source (canvas / image / ImageBitmap). A solid margin is trimmed first; what
-// remains is assumed to be the 8×8 board, white at the bottom.
-// Returns { grid:8×8 of FEN chars|null (rank 8 first), fen, confidence, occupied, plausible }.
+// Attempted, measured, rejected: finding the board INSIDE a busy screenshot by searching
+// for the best-scoring 8×8 checkerboard region. A chessboard is self-similar — a box off
+// by a fraction of a cell, or by a whole cell, still scores as a checkerboard — so the
+// search would not align precisely enough to slice the squares, and it regressed even
+// tight boards (a sparse endgame read as garbage). Robust in-image detection needs more
+// than a scoring search (gridline projection with sub-pixel peak fitting), which is a
+// project of its own. Same call as the multithreading section: measured, worse, dropped.
+// So the recognizer stays crop-first: it trims a solid margin and reads what remains, and
+// the plausibility gate refuses anything else. The UI asks for a tight crop and says so.
+
+// Scan a source (canvas / image / ImageBitmap): trim a solid margin, then read the 8×8
+// (white at the bottom). Returns
+// { grid:8×8 of FEN chars|null (rank 8 first), fen, confidence, occupied, plausible }.
 export async function scanBoard(source) {
   const templates = await loadTemplates();
   const W = source.width || source.videoWidth, H = source.height || source.videoHeight;
