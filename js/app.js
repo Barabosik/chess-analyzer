@@ -1,16 +1,16 @@
-import { Chess } from "../vendor/chess.js?v=35";
-import { Engine } from "./engine.js?v=35";
-import { renderBoard } from "./board.js?v=35";
-import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=35";
-import { rollup } from "./motifs.js?v=35";
-import { reviewKey, getCached, putCached } from "./cache.js?v=35";
-import { drawCard, cardName } from "./card.js?v=35";
-import { glyphSvg } from "./glyphs.js?v=35";
+import { Chess } from "../vendor/chess.js?v=36";
+import { Engine } from "./engine.js?v=36";
+import { renderBoard } from "./board.js?v=36";
+import { reviewGame, detectOpening, CLASSES, CLASS_ORDER, winPct, MATE_CP } from "./review.js?v=36";
+import { rollup } from "./motifs.js?v=36";
+import { reviewKey, getCached, putCached } from "./cache.js?v=36";
+import { drawCard, cardName } from "./card.js?v=36";
+import { glyphSvg } from "./glyphs.js?v=36";
 import { fetchGames, fetchGameByUrl, playerSide, outcomeFor, refToToken, tokenToUrl }
-  from "./onlinegames.js?v=35";
-import { lookupPosition, RATING_BANDS } from "./explorer.js?v=35";
-import { scanBoard, gridToFen } from "./boardscan.js?v=35";
-import { gameSummary } from "./summary.js?v=35";
+  from "./onlinegames.js?v=36";
+import { lookupPosition, RATING_BANDS } from "./explorer.js?v=36";
+import { scanBoard, gridToFen } from "./boardscan.js?v=36";
+import { gameSummary } from "./summary.js?v=36";
 
 const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -1104,7 +1104,7 @@ function renderReadout() {
     el.readGlyph.style.background = "var(--best)";
     el.readGlyph.textContent = "★";
     el.readMove.textContent = state.explain.title || "The best line";
-    el.readSub.innerHTML = "Step through it with <b>‹ ›</b>. Press <b>✓ Got it</b> to return.";
+    el.readSub.innerHTML = "Step through it with the arrows. Press <b>Got it</b> to return.";
     return;
   }
   if (state.explore) {

@@ -5,25 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chess Game Analyzer — Stockfish in your browser</title>
   <meta name="description" content="Import any PGN or FEN and get a full Stockfish game review — move classifications, accuracy, eval bar and live engine lines — running entirely in your browser." />
-  <link rel="stylesheet" href="css/style.css?v=35" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/fonts.css?v=36" />
+  <link rel="stylesheet" href="css/style.css?v=36" />
+  <link rel="icon" href="vendor/pieces/cburnett/wN.svg" type="image/svg+xml" />
+  <meta name="theme-color" content="#121715" />
 </head>
 <body>
   <div class="wrap">
     <!-- Top bar -->
     <header class="topbar">
       <div class="brand">
-        <span class="knight">♞</span>
+        <img class="mark" src="vendor/pieces/cburnett/wN.svg" alt="" width="40" height="40" />
         <div>
-          <h1>Chess Game Analyzer</h1>
-          <div class="tagline">Stockfish 18 · runs entirely in your browser</div>
+          <h1>Chess Analyzer</h1>
+          <div class="tagline">Stockfish 18, running entirely in your browser</div>
         </div>
       </div>
       <div class="topright">
         <span class="statuschip" id="engineStatus">starting…</span>
-        <button class="ghost" id="shareBtn" title="Copy a shareable link to this game">⇗</button>
-        <button class="ghost on" id="soundToggle" title="Toggle move sounds">♪</button>
-        <button class="ghost" id="themeToggle" title="Toggle light / dark">◐</button>
+        <button class="ghost" id="shareBtn" title="Copy a shareable link to this game" aria-label="Copy a shareable link to this game"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 8.5 12 4l4.5 4.5M5 13v6h14v-6"/></svg></button>
+        <button class="ghost on" id="soundToggle" title="Toggle move sounds" aria-label="Toggle move sounds"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M16.5 9a4.5 4.5 0 0 1 0 6"/></svg></button>
+        <button class="ghost" id="themeToggle" title="Toggle light / dark" aria-label="Toggle light or dark theme"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
       </div>
     </header>
 
@@ -37,13 +39,13 @@
 
     <!-- Play-the-engine setup. Replaces the import card while choosing. -->
     <section class="card playsetup hidden" id="playSetup">
-      <div class="sectlabel">Play against Stockfish</div>
+      <h2 class="sectlabel">Play against Stockfish</h2>
       <div class="setuprow">
         <div class="setupgrp">
           <label class="lab">You play</label>
           <div class="sidepick">
-            <button class="pick on" id="pickWhite">⚪ White</button>
-            <button class="pick" id="pickBlack">⚫ Black</button>
+            <button class="pick on" id="pickWhite"><i class="side w"></i>White</button>
+            <button class="pick" id="pickBlack"><i class="side b"></i>Black</button>
           </div>
         </div>
         <div class="setupgrp">
@@ -74,7 +76,7 @@
             <option value="lichess">Lichess</option>
           </select>
           <input type="text" id="userInput" spellcheck="false" autocomplete="username"
-                 placeholder="your username — or paste a link to a single game" />
+                 placeholder="Your username, or a link to one game" />
           <button class="primary" id="loadUser">Load</button>
         </div>
         <div class="accthint">
@@ -103,7 +105,7 @@
           <input type="text" id="fenInput" spellcheck="false" placeholder="rnbqkbnr/pppppppp/8/…" />
           <button id="loadFen">Load FEN</button>
           <div class="scanrow">
-            <label class="filebtn">📷 Scan a screenshot<input type="file" id="scanFile" accept="image/*" hidden /></label>
+            <label class="filebtn">Scan a screenshot<input type="file" id="scanFile" accept="image/*" hidden /></label>
             <button id="scanBtn" class="mini">Set up by hand</button>
           </div>
           <div class="scanhint">Crop the screenshot to <b>just the 8×8 board</b> (no app window or coordinates) — a Lichess/Chess.com board reads best. It's read as best we can, then you confirm and fix on an editable board.</div>
@@ -115,7 +117,7 @@
     <!-- Confirm-board: where a scanned screenshot (or a hand-built position) is
          corrected and sent to analysis. Hidden until opened. -->
     <section class="card editor hidden" id="editorCard">
-      <div class="sectlabel">Set up the position</div>
+      <h2 class="sectlabel">Set up the position</h2>
       <p class="editnote" id="editNote"></p>
       <div class="editmain">
         <div class="editboardwrap"><div class="board" id="editorBoard"></div></div>
@@ -124,12 +126,12 @@
           <div class="editrow">
             <span class="lab">To move</span>
             <div class="sidepick">
-              <button class="pick on" id="edWhite">⚪ White</button>
-              <button class="pick" id="edBlack">⚫ Black</button>
+              <button class="pick on" id="edWhite"><i class="side w"></i>White</button>
+              <button class="pick" id="edBlack"><i class="side b"></i>Black</button>
             </div>
           </div>
           <div class="editbtns">
-            <button id="edFlip" class="mini">⇅ Flip</button>
+            <button id="edFlip" class="mini">Flip board</button>
             <button id="edClear" class="mini">Clear</button>
             <button id="edStart" class="mini">Start position</button>
           </div>
@@ -149,7 +151,7 @@
       <div class="leftcol">
       <section class="card boardcard">
         <div class="ghead">
-          <h2 class="serif" id="hdrTitle">–</h2>
+          <h2 class="gtitle" id="hdrTitle">–</h2>
           <div class="ghmeta" id="hdrMeta"></div>
           <div class="opening hidden" id="openingName"></div>
         </div>
@@ -172,15 +174,15 @@
         </div>
 
         <div class="controls">
-          <button id="bStart" title="Start (Home)">⏮</button>
-          <button id="bPrev" title="Previous (←)">◀</button>
-          <button id="bNext" title="Next (→)">▶</button>
-          <button id="bEnd" title="End (End)">⏭</button>
-          <button id="bFlip" title="Flip board (f)">⇅</button>
+          <button id="bStart" title="Start (Home)" aria-label="Go to start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M18 6l-8 6 8 6z"/></svg></button>
+          <button id="bPrev" title="Previous (←)" aria-label="Previous move"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <button id="bNext" title="Next (→)" aria-label="Next move"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          <button id="bEnd" title="End (End)" aria-label="Go to end"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M6 6l8 6-8 6z"/></svg></button>
+          <button id="bFlip" title="Flip board (f)" aria-label="Flip board"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v15M4.5 15.5 8 19l3.5-3.5M16 20V5M12.5 8.5 16 5l3.5 3.5"/></svg></button>
         </div>
 
         <div class="explorebar hidden" id="exploreBar">
-          <span class="expl-label">Line</span>
+          <span class="expl-label">Exploring</span>
           <span class="expl-txt mono" id="exploreTxt"></span>
           <button id="returnGame" class="mini">Return to game</button>
         </div>
@@ -189,9 +191,9 @@
              that belongs to it (reset / resign / rematch). -->
         <div class="playbar hidden" id="playBar">
           <span class="play-txt" id="playTxt"></span>
-          <button class="mini hidden" id="soloReset">↺ Reset board</button>
-          <button class="mini hidden" id="botResign">🏳 Resign</button>
-          <button class="mini hidden" id="botRematch">↻ Rematch</button>
+          <button class="mini hidden" id="soloReset">Reset board</button>
+          <button class="mini hidden" id="botResign">Resign</button>
+          <button class="mini hidden" id="botRematch">Rematch</button>
         </div>
 
         <!-- One move, one card. The verdict, the engine's better move, and the
@@ -215,10 +217,10 @@
 
           <!-- Opens in place of the "Explain" button that summons it. -->
           <div class="explainbar hidden" id="explainBar">
-            <button class="stepbtn" id="explainPrev" title="Back">‹</button>
+            <button class="stepbtn" id="explainPrev" title="Back" aria-label="Back"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
             <span class="explain-txt" id="explainTxt"></span>
-            <button class="stepbtn" id="explainNext" title="Forward">›</button>
-            <button id="explainDone" class="mini done">✓ Got it</button>
+            <button class="stepbtn" id="explainNext" title="Forward" aria-label="Forward"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            <button id="explainDone" class="mini done">Got it</button>
           </div>
         </div>
 
@@ -228,9 +230,9 @@
             <span class="sharekind" id="shareKind"></span>
           </div>
           <!-- shown once the game has been reviewed: there is nothing to report before that -->
-          <button class="mini hidden" id="cardCopyBtn" title="Copy the game report to the clipboard as an image">📋 Copy image</button>
-          <button class="mini hidden" id="cardBtn" title="Download the game report as an image">⬇ Save image</button>
-          <button class="primary mini" id="shareBtn2">🔗 Copy link</button>
+          <button class="mini hidden" id="cardCopyBtn" title="Copy the game report to the clipboard as an image">Copy image</button>
+          <button class="mini hidden" id="cardBtn" title="Download the game report as an image">Save image</button>
+          <button class="primary mini" id="shareBtn2">Copy link</button>
           <span class="sharenote hidden" id="shareNote"></span>
         </div>
       </section>
@@ -267,13 +269,13 @@
           <div class="depthrow">
             <label class="lab" for="depthSel">Depth</label>
             <select id="depthSel">
-              <option value="12">12 · fastest</option>
-              <option value="14">14 · fast</option>
-              <option value="16">16 · balanced</option>
-              <option value="18">18 · deep</option>
-              <option value="20">20 · deeper</option>
-              <option value="22">22 · deepest</option>
-              <option value="26">26 · maximum (slow)</option>
+              <option value="12">12, fastest</option>
+              <option value="14">14, fast</option>
+              <option value="16">16, balanced</option>
+              <option value="18">18, deep</option>
+              <option value="20">20, deeper</option>
+              <option value="22">22, deepest</option>
+              <option value="26">26, maximum (slow)</option>
             </select>
           </div>
           <div class="progress hidden" id="progress">
@@ -354,6 +356,6 @@
     </footer>
   </div>
 
-  <script type="module" src="js/app.js?v=35"></script>
+  <script type="module" src="js/app.js?v=36"></script>
 </body>
 </html>
