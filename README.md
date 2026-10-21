@@ -5,7 +5,7 @@ Type your Chess.com or Lichess username — or paste any PGN or FEN — and get 
 move classifications, per-side accuracy, an eval bar, captured-material tracking, and live
 engine lines. **Your games are never uploaded** — the engine runs on your own machine.
 
-**► Live app: https://barabosik.github.io/chess-analyzer/**
+**► Live app: https://nikita-andreiev.com/chess-analyzer/**
 
 ![Chess Analyzer screenshot](docs/screenshot.png)
 

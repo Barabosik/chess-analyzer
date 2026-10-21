@@ -185,7 +185,7 @@ export function drawCard(canvas, { headers = {}, moves = [], review = {}, scale 
   // --- footer ---
   c.textAlign = "left"; c.fillStyle = MUTED;
   c.font = "500 13px ui-sans-serif,system-ui,sans-serif";
-  c.fillText("barabosik.github.io/chess-analyzer", L, H - 40);
+  c.fillText("nikita-andreiev.com/chess-analyzer", L, H - 40);
   c.textAlign = "right";
   c.fillText(moves.length ? Math.ceil(moves.length / 2) + " moves" : "", R, H - 40);
 
